@@ -1,0 +1,61 @@
+name: CD
+
+# Deploys aws-operations-poc-main to AWS on every push to main.
+#
+# EXTERNAL BOOTSTRAP DEPENDENCY (cannot be created by this workflow or by an
+# automated agent under the project's "no IAM changes" boundary):
+#   1. A GitHub OIDC identity provider must exist in the AWS account
+#      (token.actions.githubusercontent.com), and
+#   2. An IAM role trusted by that provider, scoped to this repo
+#      (repo:phatcobra/aws-operations-poc:ref:refs/heads/main), with
+#      permission only to: cloudformation:CreateStack/UpdateStack/
+#      DescribeStacks/ValidateTemplate/GetTemplate on
+#      arn:aws:cloudformation:us-east-2:660838763909:stack/aws-operations-poc-*
+#      and iam:PassRole limited to arn:aws:iam::660838763909:role/aws-operations-poc-cfn-role.
+#   Its ARN must be stored as the repository secret AWS_DEPLOY_ROLE_ARN.
+# Until that role exists, this workflow's deploy job will fail at the
+# "configure-aws-credentials" step -- tests and template rendering still run.
+# No long-lived AWS access keys are used or requested.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run unit tests (deterministic, no network)
+        run: python3 -m unittest discover -s tests -v
+      - name: Render and validate CloudFormation template
+        run: |
+          pip install --quiet cfn-lint
+          python3 scripts/render_template.py
+          cfn-lint infra/template.rendered.yaml
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Configure AWS credentials via OIDC (no long-lived keys)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-2
+
+      - name: Deploy aws-operations-poc-main via the CloudFormation service role
+        run: bash scripts/deploy.sh

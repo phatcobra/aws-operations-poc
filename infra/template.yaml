@@ -1,0 +1,115 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  aws-operations-poc: EventBridge-scheduled Lambda that fetches a public,
+  keyless weather API with bounded retry/backoff and deterministic fault
+  injection, persists structured run evidence to DynamoDB, and logs
+  structured JSON to CloudWatch. Lambda code is inlined from src/app.py by
+  scripts/render_template.py (single source of truth, no S3 packaging step
+  needed for a function this small). Uses the pre-provisioned Lambda runtime
+  role; creates no IAM resources.
+
+Parameters:
+  LambdaRuntimeRoleArn:
+    Type: String
+    Description: Pre-provisioned execution role for the worker Lambda (not created by this stack).
+    Default: arn:aws:iam::660838763909:role/aws-operations-poc-lambda-role
+  ScheduleExpression:
+    Type: String
+    Description: EventBridge schedule for the normal (fault injection disabled) run.
+    Default: rate(1 hour)
+  FaultInjectionDefault:
+    Type: String
+    Description: Default fault-injection mode for scheduled runs. Must stay "false" for normal operation.
+    Default: "false"
+    AllowedValues: ["false", "transient", "permanent"]
+  LogRetentionInDays:
+    Type: Number
+    Default: 14
+
+Resources:
+  RunsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: aws-operations-poc-runs
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: run_id
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: S
+      KeySchema:
+        - AttributeName: run_id
+          KeyType: HASH
+        - AttributeName: timestamp
+          KeyType: RANGE
+      Tags:
+        - Key: Project
+          Value: aws-operations-poc
+
+  WorkerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/lambda/aws-operations-poc-worker
+      RetentionInDays: !Ref LogRetentionInDays
+      Tags:
+        - Key: Project
+          Value: aws-operations-poc
+
+  WorkerFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: WorkerLogGroup
+    Properties:
+      FunctionName: aws-operations-poc-worker
+      Description: Fetches a public weather API on a schedule; bounded retries; persists evidence to DynamoDB.
+      Runtime: python3.12
+      Handler: index.handler
+      Role: !Ref LambdaRuntimeRoleArn
+      Timeout: 20
+      MemorySize: 128
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref RunsTable
+          MAX_ATTEMPTS: "3"
+          REQUEST_TIMEOUT_SECONDS: "3"
+          BACKOFF_BASE_SECONDS: "0.5"
+          FAULT_INJECTION_DEFAULT: !Ref FaultInjectionDefault
+      Code:
+        ZipFile: |
+{{LAMBDA_SOURCE}}
+      Tags:
+        - Key: Project
+          Value: aws-operations-poc
+
+  ScheduleRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: aws-operations-poc-schedule
+      Description: Triggers the aws-operations-poc worker Lambda on a fixed schedule (fault injection disabled).
+      ScheduleExpression: !Ref ScheduleExpression
+      State: ENABLED
+      Targets:
+        - Id: aws-operations-poc-worker
+          Arn: !GetAtt WorkerFunction.Arn
+          RetryPolicy:
+            MaximumRetryAttempts: 0
+            MaximumEventAgeInSeconds: 60
+
+  SchedulePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref WorkerFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt ScheduleRule.Arn
+
+Outputs:
+  FunctionName:
+    Value: !Ref WorkerFunction
+  FunctionArn:
+    Value: !GetAtt WorkerFunction.Arn
+  TableName:
+    Value: !Ref RunsTable
+  ScheduleRuleName:
+    Value: !Ref ScheduleRule
+  LogGroupName:
+    Value: !Ref WorkerLogGroup

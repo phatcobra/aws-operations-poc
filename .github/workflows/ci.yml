@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: ["**"]
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dev tooling
+        run: pip install --quiet cfn-lint
+
+      - name: Run unit tests (deterministic, no network)
+        run: python3 -m unittest discover -s tests -v
+
+      - name: Render CloudFormation template (inlines src/app.py, enforces 4096-char limit)
+        run: python3 scripts/render_template.py
+
+      - name: Lint rendered CloudFormation template
+        run: cfn-lint infra/template.rendered.yaml
