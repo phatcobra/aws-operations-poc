@@ -1,20 +1,8 @@
 name: CD
 
-# Deploys aws-operations-poc-main to AWS on every push to main.
-#
-# AWS bootstrap dependency:
-#   1. A GitHub OIDC identity provider must exist in the AWS account
-#      (token.actions.githubusercontent.com).
-#   2. The deployment role below must trust this repo's immutable GitHub OIDC
-#      subject for the production environment exactly:
-#        repo:phatcobra@69565195/aws-operations-poc@1372530555:environment:production
-#      (NOT the older name-based/branch-ref form -- see docs/AWS_BOUNDARY.md).
-#   3. The production environment must be restricted to main.
-#
-# The role ARN is intentionally explicit here. An IAM role ARN is an identifier,
-# not a credential or secret, so keeping it in the workflow avoids an unnecessary
-# secret dependency while credentials are still obtained only through OIDC.
-# No long-lived AWS access keys are used or requested.
+# Push-to-main deployment and live operational proof.
+# AWS credentials are obtained only through GitHub OIDC; no long-lived keys.
+# The role ARN is an identifier, not a credential, so it is explicit here.
 
 on:
   push:
@@ -32,16 +20,16 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install dependencies (boto3 for the handler under test, cfn-lint for template linting)
+      - name: Install dependencies
         run: pip install --quiet -r requirements-dev.txt cfn-lint
-      - name: Run unit tests (deterministic, no network)
+      - name: Run deterministic offline tests
         run: python3 -m unittest discover -s tests -v
-      - name: Render and validate CloudFormation template
+      - name: Render and lint CloudFormation
         run: |
           python3 scripts/render_template.py
           cfn-lint infra/template.rendered.yaml
 
-  deploy:
+  deploy-and-prove:
     needs: test
     runs-on: ubuntu-latest
     environment: production
@@ -50,14 +38,26 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install dependencies (boto3 -- scripts/deploy.sh re-runs the test suite as a fail-closed gate)
+      - name: Install dependencies
         run: pip install --quiet -r requirements-dev.txt
 
-      - name: Configure AWS credentials via OIDC (no long-lived keys)
+      - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::660838763909:role/aws-operations-poc-github-deploy-role
           aws-region: us-east-2
 
-      - name: Deploy aws-operations-poc-main via the CloudFormation service role
+      - name: Deploy aws-operations-poc-main
         run: bash scripts/deploy.sh
+
+      - name: Verify live failure, recovery, persistence, and logs
+        run: python3 scripts/verify_live.py --output live-evidence.json
+
+      - name: Upload live operational proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aws-operations-poc-live-evidence-${{ github.sha }}
+          path: live-evidence.json
+          if-no-files-found: warn
+          retention-days: 30

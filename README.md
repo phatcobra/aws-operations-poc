@@ -1,182 +1,184 @@
-# aws-operations-poc
+# Autonomous AWS Operations Lab
 
-A small, real, deployed AWS portfolio POC: a scheduled Lambda that calls a
-public API, survives (and proves it survives) a controlled transient
-failure, and leaves an auditable trail of exactly what happened.
+`aws-operations-poc` is a compact, deployed AWS operations project designed to prove that a small workload can be built, tested, deployed, observed, deliberately failed, automatically recovered, and audited end to end.
 
-## Problem being demonstrated
+The neutral workload is weather data. The engineering demonstration is the point.
 
-Production operations questions this POC answers with evidence, not
-assertions:
+## What it proves
 
-- Does a scheduled job actually run on schedule, unattended?
-- When a downstream dependency fails transiently, does the system recover
-  automatically, and can you prove it did -- with a bounded number of
-  retries, never an infinite loop?
-- When a downstream dependency fails permanently, does the system fail
-  closed (bounded attempts, clear failure record) instead of retrying
-  forever or silently losing the failure?
-- Is every run -- success or failure -- persisted as structured evidence
-  that can be queried later, not just logged and forgotten?
-- Can all of this be built, tested, and deployed through CI/CD with no
-  long-lived AWS credentials and no IAM changes?
+A push to `main` follows this path:
+
+```text
+GitHub change
+→ deterministic tests
+→ CloudFormation validation
+→ GitHub OIDC authentication
+→ AWS deployment
+→ scheduled Lambda workload
+→ public API call
+→ structured CloudWatch logs + native Lambda metrics
+→ DynamoDB execution evidence
+→ controlled failure
+→ bounded automatic recovery
+→ machine-readable live proof artifact
+```
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    EB["EventBridge Rule\naws-operations-poc-schedule\nrate(1 hour)"] -->|invokes| L["Lambda\naws-operations-poc-worker\nPython 3.12"]
-    L -->|"GET (3s timeout,\nbounded retry+backoff)"| API["Open-Meteo\npublic API, no key"]
-    L -->|put_item| DDB[("DynamoDB\naws-operations-poc-runs")]
-    L -->|structured JSON| CW["CloudWatch Logs\n/aws/lambda/aws-operations-poc-worker"]
-    Dev["Manual invoke\n(fault_injection payload)"] -.->|test scenarios| L
+    G[GitHub main] --> CI[GitHub Actions CI]
+    CI --> OIDC[GitHub OIDC]
+    OIDC --> CFN[CloudFormation]
+    CFN --> L[Lambda: aws-operations-poc-worker]
+    EB[EventBridge: hourly] --> L
+    L --> API[Open-Meteo public API]
+    L --> DDB[(DynamoDB: aws-operations-poc-runs)]
+    L --> CW[CloudWatch Logs + Lambda metrics]
+    CD[CD live-proof step] --> L
+    DDB --> CD
+    CW --> CD
+    CD --> A[GitHub Actions evidence artifact]
 ```
 
-One function, one table, one schedule, one log group. No queues, no state
-machine, no API Gateway -- nothing the objective doesn't need.
+The deployed stack is `aws-operations-poc-main` in `us-east-2`.
 
-## AWS services
+## AWS resources
 
 | Service | Resource | Purpose |
 |---|---|---|
-| Lambda | `aws-operations-poc-worker` | Runs the workload |
-| EventBridge | `aws-operations-poc-schedule` | Triggers it hourly; `MaximumRetryAttempts: 0` so the platform never stacks its own retries on top of the function's internal bounded retry |
-| DynamoDB | `aws-operations-poc-runs` | Persisted run evidence, on-demand billing |
-| CloudWatch Logs | `/aws/lambda/aws-operations-poc-worker` | Structured JSON logs, 14-day retention |
+| Lambda | `aws-operations-poc-worker` | Python 3.12 workload and bounded recovery loop |
+| EventBridge | `aws-operations-poc-schedule` | Hourly unattended execution |
+| DynamoDB | `aws-operations-poc-runs` | Durable per-attempt evidence |
+| CloudWatch Logs | `/aws/lambda/aws-operations-poc-worker` | Structured JSON operational logs |
+| CloudWatch Metrics | Native Lambda metrics | Invocation/duration/platform health signals |
+| CloudFormation | `aws-operations-poc-main` | Infrastructure as code and deployment boundary |
+| GitHub Actions | CI + CD | Tests, validation, OIDC deployment, live proof |
 
-All resource **names** are prefixed `aws-operations-poc-`; everything is
-tagged `Project=aws-operations-poc`; everything lives in one CloudFormation
-stack, `aws-operations-poc-main`, in `us-east-2`.
+All application resources use the `aws-operations-poc-` namespace and the project stays in `us-east-2`.
 
-## Why the Lambda code is inlined, not zipped to S3
+## Reliability behavior
 
-This account's deploy identity (and, verified live, the CloudFormation
-service role it uses) has no `s3:CreateBucket` / `s3:PutObject`
-permissions at all -- there is no permitted path to get a deployment
-package into S3. `src/app.py` is therefore small enough to inline directly
-as `AWS::Lambda::Function.Code.ZipFile` (CloudFormation's 4096-character
-limit for that field). `scripts/render_template.py` generates the deployed
-template from the real, tested `src/app.py` via `ast.unparse` (strips
-comments/docstrings, changes nothing else) and fails the build loudly if it
-would ever exceed the limit -- so the deployed code and the tested code can
-never drift, and there's no silent truncation. Full reasoning and every
-permission probe behind this decision is in
-[`docs/AWS_BOUNDARY.md`](docs/AWS_BOUNDARY.md).
+The Lambda uses a strict bounded attempt loop (`MAX_ATTEMPTS=3`) with exponential backoff. It never creates an infinite retry path.
 
-## Failure injection and bounded recovery
-
-The handler runs up to `MAX_ATTEMPTS` (default 3) attempts with exponential
-backoff (`BACKOFF_BASE_SECONDS * 2^(attempt-1)`), and **always returns
-normally** -- it never raises out of the handler, so it can never trigger
-Lambda/EventBridge's own async retry on top of its internal one. Fault mode
-is controlled per-invocation by the `fault_injection` field in the event
-payload (disabled by default, so scheduled runs are never affected unless
-explicitly overridden via the `FaultInjectionDefault` stack parameter):
-
-| `fault_injection` | Behavior |
+| Scenario | Expected behavior |
 |---|---|
-| absent / `"false"` | Real call to the public API (normal operation) |
-| `"transient"` | Attempt 1 deterministically fails; attempt 2 calls the real API and (normally) succeeds -- proves bounded automatic recovery |
-| `"permanent"` | Every attempt deterministically fails -- proves retry exhaustion stops at `MAX_ATTEMPTS`, never loops |
+| normal | API succeeds on attempt 1; `recovery_state=not_needed` |
+| transient | attempt 1 fails deterministically; attempt 2 succeeds; `recovery_state=recovered` |
+| permanent | exactly 3 failed attempts; final `recovery_state=exhausted` |
+
+The EventBridge target itself has `MaximumRetryAttempts: 0`, preventing platform retries from stacking on top of the function's bounded internal recovery policy.
 
 ## Persisted evidence
 
-Every attempt (not just the final outcome) is written to
-`aws-operations-poc-runs` and logged as one structured JSON line:
+Every attempt is written to DynamoDB and emitted as structured JSON. The evidence contract includes:
 
 ```json
-{"run_id": "...", "timestamp": "...", "trigger_type": "scheduled|manual",
- "attempt_number": 1, "external_request_result": "...",
- "status": "success|failure", "recovery_state": "not_needed|recovered|retrying|exhausted",
- "latency_ms": 12.3}
+{
+  "run_id": "...",
+  "timestamp": "...",
+  "trigger_type": "scheduled|manual|cd-live-proof",
+  "attempt_number": 1,
+  "external_request_result": "...",
+  "status": "success|failure",
+  "recovery_state": "not_needed|retrying|recovered|exhausted",
+  "latency_ms": 12.3
+}
 ```
 
-`run_id` + `timestamp` is the DynamoDB key, so every attempt of a single
-invocation is queryable as a group.
+The table key is `run_id + timestamp`, so all attempts for one invocation can be queried together.
+
+## Automated live proof
+
+`scripts/verify_live.py` is the final acceptance test. After deployment it:
+
+1. invokes the real Lambda for normal, transient, and permanent scenarios;
+2. queries DynamoDB with a consistent read;
+3. asserts the exact persisted attempt sequence;
+4. waits for CloudWatch log evidence for each `run_id`;
+5. records the AWS assumed-role identity used for proof;
+6. writes `live-evidence.json`;
+7. GitHub Actions uploads that file as a 30-day workflow artifact.
+
+A successful CD run therefore proves deployment and runtime behavior rather than merely proving that files exist.
+
+## CI/CD
+
+CI runs on pushes and pull requests and requires no AWS credentials. It installs dependencies, runs all deterministic offline unit tests, renders the deployable template from the tested source, and runs `cfn-lint`.
+
+CD runs only on `main` under the `production` environment. It uses GitHub OIDC to assume:
+
+```text
+arn:aws:iam::660838763909:role/aws-operations-poc-github-deploy-role
+```
+
+No AWS access keys are stored in GitHub. The role ARN is intentionally public configuration; it is not a credential.
+
+The AWS trust policy must match the repository's immutable environment subject exactly:
+
+```text
+repo:phatcobra@69565195/aws-operations-poc@1372530555:environment:production
+```
+
+See [`docs/AWS_BOUNDARY.md`](docs/AWS_BOUNDARY.md) for the exact least-privilege bootstrap policy and current verification state.
 
 ## Observability
 
-Every log line is a single JSON object (`log_event` in `src/app.py`), so
-CloudWatch Logs Insights can query on any field (`status`, `recovery_state`,
-`trigger_type`, ...) without a log-parsing pipeline. A DynamoDB write
-failure is caught and logged (`evidence_write_failed`) rather than crashing
-the run -- observability degrades gracefully instead of taking the
-workload down with it.
+Operational state is visible in three layers:
 
-## Cost-conscious design
+- structured CloudWatch Logs for run-level events and failure context;
+- native Lambda CloudWatch metrics for invocation, duration, throttling, and platform-level errors;
+- DynamoDB attempt records for durable, queryable success/failure/recovery evidence.
 
-- DynamoDB: on-demand (`PAY_PER_REQUEST`) billing -- no idle capacity cost.
-- Lambda: 128 MB, ~20s timeout ceiling, hourly schedule -- effectively free
-  tier for a portfolio-scale demo.
-- CloudWatch Logs: 14-day retention instead of indefinite.
-- No NAT gateway, no VPC, no S3 bucket, no always-on compute.
+The deliberate application-level failures are handled inside the bounded recovery loop, so their authoritative outcome is the structured log/evidence contract rather than the Lambda `Errors` metric.
 
 ## Security model
 
-- The deploying identity (`claude-poc-role`) is CloudFormation-lifecycle-only:
-  verified live to have `CreateStack`/`UpdateStack`/`DescribeStacks`/
-  `ValidateTemplate`/`GetTemplate` and nothing else service-specific --
-  see [`docs/AWS_BOUNDARY.md`](docs/AWS_BOUNDARY.md) for every permission
-  probed.
-- This project creates **no IAM roles or policies**. The Lambda runs under
-  a pre-provisioned `aws-operations-poc-lambda-role`; CloudFormation itself
-  deploys under a pre-provisioned `aws-operations-poc-cfn-role`, passed
-  explicitly via `--role-arn` on every stack operation.
-- No secrets, no API keys: the public API requires none, and CI/CD assumes
-  AWS credentials via GitHub OIDC (no long-lived access keys stored
-  anywhere).
+- CloudFormation creates no IAM resources.
+- The Lambda uses a pre-provisioned runtime role.
+- CloudFormation uses a pre-provisioned service role.
+- GitHub uses OIDC, not long-lived AWS keys.
+- The GitHub deployment role is scoped to this project's CloudFormation stack and exact runtime-proof resources.
+- The `production` GitHub environment is intended to be restricted to `main`.
+- The public weather API requires no secret or API key.
 
-## CI/CD path
+## Cost controls
 
-- **CI** (`.github/workflows/ci.yml`): every PR and push runs the unit
-  tests, renders the CloudFormation template from `src/app.py`, and lints
-  it with `cfn-lint`. No AWS credentials are used or required.
-- **CD** (`.github/workflows/cd.yml`): on push to `main`, re-runs tests and
-  rendering, then assumes an AWS role via OIDC (`id-token: write`, no
-  long-lived keys) and runs `scripts/deploy.sh`, which deploys
-  `aws-operations-poc-main` using the pre-provisioned CloudFormation service
-  role.
-  **Bootstrap dependency:** the GitHub OIDC provider/role this workflow
-  assumes does not exist yet in this AWS account and was not created here
-  (creating it means creating IAM resources, which this project's operating
-  rules prohibit). See [`docs/AWS_BOUNDARY.md`](docs/AWS_BOUNDARY.md) for
-  the exact minimum role/policy to bootstrap and the repo secret
-  (`AWS_DEPLOY_ROLE_ARN`) to set. Until then, deployment is run from a
-  workstation with the `claude-poc` profile via `scripts/deploy.sh`
-  directly -- which is how this stack was actually deployed.
+- Lambda: 128 MB, hourly schedule, 20-second timeout ceiling.
+- DynamoDB: `PAY_PER_REQUEST`.
+- CloudWatch Logs: 14-day retention.
+- No NAT gateway, VPC, S3 deployment bucket, or always-on application compute.
 
-## How to reproduce
+## Run locally
 
 ```bash
-# 0. Install dev/runtime-import dependencies (boto3 is preinstalled in the
-#    Lambda runtime, but not on a fresh machine/CI runner, and src/app.py
-#    imports it at module load, so tests need it installed explicitly)
 pip install -r requirements-dev.txt
-
-# 1. Run the deterministic, offline test suite
 python3 -m unittest discover -s tests -v
-
-# 2. Render the CloudFormation template (inlines src/app.py, enforces the
-#    4096-char ZipFile limit) and validate it
 python3 scripts/render_template.py
-aws cloudformation validate-template --template-body file://infra/template.rendered.yaml
+cfn-lint infra/template.rendered.yaml
+```
 
-# 3. Deploy (creates or updates aws-operations-poc-main)
+Deployment:
+
+```bash
 bash scripts/deploy.sh
+```
 
-# 4. Exercise all three scenarios against the live function (requires
-#    lambda:InvokeFunction + dynamodb:Query -- see docs/AWS_BOUNDARY.md)
-bash scripts/invoke_demo.sh
+Live acceptance proof (requires the narrowly scoped invoke/query/log-read permissions documented in `docs/AWS_BOUNDARY.md`):
+
+```bash
+python3 scripts/verify_live.py --output live-evidence.json
 ```
 
 ## Repository layout
 
+```text
+src/                  Lambda workload
+tests/                deterministic offline tests
+infra/                CloudFormation
+scripts/              render, deploy, manual/live verification
+docs/                 security boundary and portfolio explanation
+.github/workflows/     CI and CD
 ```
-src/        Lambda handler (single source of truth for both tests and the deployed code)
-tests/      Deterministic, offline unit tests (no network, no AWS calls)
-infra/      CloudFormation template + the render script that inlines src/app.py into it
-scripts/    deploy.sh, render_template.py, invoke_demo.sh
-requirements-dev.txt  boto3, needed to import src/app.py outside the Lambda runtime (tests, cfn rendering)
-docs/       AWS permission boundary, findings from the live account
-.github/workflows/  CI (test+lint) and CD (deploy via OIDC)
-```
+
+For an interview-oriented explanation and resume wording, see [`docs/PORTFOLIO.md`](docs/PORTFOLIO.md).
