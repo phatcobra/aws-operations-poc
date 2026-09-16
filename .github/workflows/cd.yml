@@ -2,27 +2,19 @@ name: CD
 
 # Deploys aws-operations-poc-main to AWS on every push to main.
 #
-# EXTERNAL BOOTSTRAP DEPENDENCY (cannot be created by this workflow or by an
-# automated agent under the project's "no IAM changes" boundary):
+# AWS bootstrap dependency:
 #   1. A GitHub OIDC identity provider must exist in the AWS account
-#      (token.actions.githubusercontent.com), and
-#   2. An IAM role trusted by that provider. This repo was created after
-#      2026-07-15, so GitHub issues immutable-format OIDC subjects, and the
-#      deploy job below runs under the "production" environment, so the
-#      trust policy's `sub` condition must match exactly:
+#      (token.actions.githubusercontent.com).
+#   2. The deployment role below must trust this repo's immutable GitHub OIDC
+#      subject for the production environment exactly:
 #        repo:phatcobra@69565195/aws-operations-poc@1372530555:environment:production
-#      (NOT the older name-based/branch-ref form -- see docs/AWS_BOUNDARY.md)
-#      Permissions: cloudformation:CreateStack/UpdateStack/DescribeStacks/
-#      ValidateTemplate/GetTemplate on
-#      arn:aws:cloudformation:us-east-2:660838763909:stack/aws-operations-poc-*
-#      and iam:PassRole limited to arn:aws:iam::660838763909:role/aws-operations-poc-cfn-role.
-#   Its ARN must be stored as the repository secret AWS_DEPLOY_ROLE_ARN. The
-#   "production" environment (Settings -> Environments) must be restricted
-#   to the main branch, otherwise any branch/PR could mint a token with
-#   this same subject.
-# Until that role exists and is scoped correctly, this workflow's deploy
-# job fails at the "configure-aws-credentials" step -- tests and template
-# rendering still run. No long-lived AWS access keys are used or requested.
+#      (NOT the older name-based/branch-ref form -- see docs/AWS_BOUNDARY.md).
+#   3. The production environment must be restricted to main.
+#
+# The role ARN is intentionally explicit here. An IAM role ARN is an identifier,
+# not a credential or secret, so keeping it in the workflow avoids an unnecessary
+# secret dependency while credentials are still obtained only through OIDC.
+# No long-lived AWS access keys are used or requested.
 
 on:
   push:
@@ -64,7 +56,7 @@ jobs:
       - name: Configure AWS credentials via OIDC (no long-lived keys)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          role-to-assume: arn:aws:iam::660838763909:role/aws-operations-poc-github-deploy-role
           aws-region: us-east-2
 
       - name: Deploy aws-operations-poc-main via the CloudFormation service role
