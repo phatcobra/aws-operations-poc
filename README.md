@@ -148,6 +148,11 @@ workload down with it.
 ## How to reproduce
 
 ```bash
+# 0. Install dev/runtime-import dependencies (boto3 is preinstalled in the
+#    Lambda runtime, but not on a fresh machine/CI runner, and src/app.py
+#    imports it at module load, so tests need it installed explicitly)
+pip install -r requirements-dev.txt
+
 # 1. Run the deterministic, offline test suite
 python3 -m unittest discover -s tests -v
 
@@ -171,6 +176,7 @@ src/        Lambda handler (single source of truth for both tests and the deploy
 tests/      Deterministic, offline unit tests (no network, no AWS calls)
 infra/      CloudFormation template + the render script that inlines src/app.py into it
 scripts/    deploy.sh, render_template.py, invoke_demo.sh
+requirements-dev.txt  boto3, needed to import src/app.py outside the Lambda runtime (tests, cfn rendering)
 docs/       AWS permission boundary, findings from the live account
 .github/workflows/  CI (test+lint) and CD (deploy via OIDC)
 ```

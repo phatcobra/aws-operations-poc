@@ -4,6 +4,16 @@ This documents what was empirically verified about the deploying identity's
 permissions during the initial build of this POC. No credentials or secrets
 are included below -- only ARNs, an AWS account ID, and IAM action names.
 
+**Status as of the most recent re-check (2026-09-16, after the human IAM
+administrator reported both boundaries below resolved):** the GitHub OIDC
+CD path is believed newly bootstrapped (see "GitHub Actions OIDC" below;
+confirmed by an actual `cd.yml` deploy run, not by reading IAM). The
+runtime invoke/read grant is **not yet visible from this identity** --
+`lambda:InvokeFunction`, `lambda:GetFunction`, `dynamodb:Query`, and
+`logs:FilterLogEvents` were re-tested multiple times, including a live
+`scripts/invoke_demo.sh` run, and all still return `AccessDeniedException`
+for `claude-poc-role`. See "Runtime evidence -- current status" below.
+
 ## Identity used to build and deploy
 
 - Assumed role: `arn:aws:sts::660838763909:assumed-role/claude-poc-role/...`
@@ -58,6 +68,23 @@ exhausted-retry record) can only be captured by:
    `lambda:InvokeFunction` on `aws-operations-poc-worker` and
    `dynamodb:Query` on `aws-operations-poc-runs`.
 
+### Runtime evidence -- current status
+
+Re-tested on 2026-09-16 after being told this boundary was resolved:
+`aws lambda invoke`, `aws lambda get-function`, `aws dynamodb query`, and
+`aws logs filter-log-events` against the live resources all still return
+`AccessDeniedException` for `claude-poc-role` (same error text as above,
+re-run twice a few minutes apart to rule out propagation delay). No new
+AWS CLI profile or credential source is present in `~/.aws/config` for
+this session. Either the grant was applied to a different principal than
+`claude-poc-role`, it has not yet propagated, or it targets a different
+account/resource scope than `aws-operations-poc-*` in `us-east-2`
+(660838763909). Until one of `lambda:InvokeFunction` /
+`dynamodb:Query` / `logs:FilterLogEvents` succeeds from this identity,
+runtime evidence is still limited to what the autonomous hourly
+EventBridge trigger produces, which cannot be read back by this identity
+either -- so it remains unobserved from here, not merely unexercised.
+
 ## Minimum action to unblock full runtime verification
 
 Grant the deploying/verifying identity (or a separate read/invoke identity)
@@ -85,19 +112,48 @@ the CloudFormation-verified deployment is required.
 ## GitHub Actions OIDC (CD)
 
 `.github/workflows/cd.yml` assumes an AWS role via OIDC on every push to
-`main`. That role (and the GitHub OIDC provider it trusts) does not exist
-yet in this account and was not created here, per the same no-IAM-changes
-rule. Bootstrapping it (one-time, human/IAM-admin action):
+`main`, using the `deploy` job's `environment: production`. This repo
+(`phatcobra/aws-operations-poc`, owner id `69565195`, repo id
+`1372530555` -- both confirmed live via `api.github.com/repos/...`) was
+created after 2026-07-15, so GitHub issues its OIDC tokens in the newer
+**immutable** subject format: numeric owner/repo IDs instead of their
+(mutable) names, `@`-joined to the names (`@` cannot appear in a GitHub
+username or repo name, so it's an unambiguous separator), and reflecting
+the job's environment since `deploy` declares one:
+
+```
+repo:phatcobra@69565195/aws-operations-poc@1372530555:environment:production
+```
+
+This is the exact subject an AWS IAM role's trust policy must match. The
+older, name-based, branch-ref subject
+(`repo:phatcobra/aws-operations-poc:ref:refs/heads/main`) is **wrong for
+this repo** -- both because this repo uses the immutable format, and
+because the deploy job runs under an `environment`, not a bare branch ref.
+Do not configure or document the branch-ref form for this repo's trust
+policy.
+
+Bootstrapping the role (one-time, human/IAM-admin action -- reported done
+as of 2026-09-16, not independently confirmed from this identity since it
+cannot read IAM or OIDC provider configuration):
 
 1. Create the OIDC provider for `token.actions.githubusercontent.com`
    (skip if one already exists for the account).
-2. Create an IAM role trusted by that provider, condition-scoped to
-   `repo:phatcobra/aws-operations-poc:ref:refs/heads/main`, with permissions
-   limited to `cloudformation:CreateStack/UpdateStack/DescribeStacks/
-   ValidateTemplate/GetTemplate` on `arn:aws:cloudformation:us-east-2:660838763909:stack/aws-operations-poc-*`
-   and `iam:PassRole` limited to `arn:aws:iam::660838763909:role/aws-operations-poc-cfn-role`.
+2. Create an IAM role trusted by that provider, condition-scoped via
+   `token.actions.githubusercontent.com:sub` to exactly
+   `repo:phatcobra@69565195/aws-operations-poc@1372530555:environment:production`,
+   with permissions limited to `cloudformation:CreateStack/UpdateStack/
+   DescribeStacks/ValidateTemplate/GetTemplate` on
+   `arn:aws:cloudformation:us-east-2:660838763909:stack/aws-operations-poc-*`
+   and `iam:PassRole` limited to
+   `arn:aws:iam::660838763909:role/aws-operations-poc-cfn-role`.
 3. Store that role's ARN as the repository secret `AWS_DEPLOY_ROLE_ARN`.
+4. Restrict the `production` GitHub environment (Settings -> Environments)
+   to the `main` branch only, so no other branch/PR can ever mint a token
+   with this subject.
 
-Until then, `cd.yml`'s `test` job runs on every push to `main` (tests +
-template rendering + `cfn-lint`); the `deploy` job will fail at the
-credentials step with a clear error rather than doing anything silently.
+The real test of whether this is live is an actual `cd.yml` run on a push
+to `main`: if the `deploy` job's "Configure AWS credentials via OIDC" step
+succeeds, the role and trust policy are correctly wired. If it fails
+there, `test` still ran (tests + template rendering + `cfn-lint`) with no
+AWS credentials involved.

@@ -6,16 +6,23 @@ name: CD
 # automated agent under the project's "no IAM changes" boundary):
 #   1. A GitHub OIDC identity provider must exist in the AWS account
 #      (token.actions.githubusercontent.com), and
-#   2. An IAM role trusted by that provider, scoped to this repo
-#      (repo:phatcobra/aws-operations-poc:ref:refs/heads/main), with
-#      permission only to: cloudformation:CreateStack/UpdateStack/
-#      DescribeStacks/ValidateTemplate/GetTemplate on
+#   2. An IAM role trusted by that provider. This repo was created after
+#      2026-07-15, so GitHub issues immutable-format OIDC subjects, and the
+#      deploy job below runs under the "production" environment, so the
+#      trust policy's `sub` condition must match exactly:
+#        repo:phatcobra@69565195/aws-operations-poc@1372530555:environment:production
+#      (NOT the older name-based/branch-ref form -- see docs/AWS_BOUNDARY.md)
+#      Permissions: cloudformation:CreateStack/UpdateStack/DescribeStacks/
+#      ValidateTemplate/GetTemplate on
 #      arn:aws:cloudformation:us-east-2:660838763909:stack/aws-operations-poc-*
 #      and iam:PassRole limited to arn:aws:iam::660838763909:role/aws-operations-poc-cfn-role.
-#   Its ARN must be stored as the repository secret AWS_DEPLOY_ROLE_ARN.
-# Until that role exists, this workflow's deploy job will fail at the
-# "configure-aws-credentials" step -- tests and template rendering still run.
-# No long-lived AWS access keys are used or requested.
+#   Its ARN must be stored as the repository secret AWS_DEPLOY_ROLE_ARN. The
+#   "production" environment (Settings -> Environments) must be restricted
+#   to the main branch, otherwise any branch/PR could mint a token with
+#   this same subject.
+# Until that role exists and is scoped correctly, this workflow's deploy
+# job fails at the "configure-aws-credentials" step -- tests and template
+# rendering still run. No long-lived AWS access keys are used or requested.
 
 on:
   push:
@@ -33,11 +40,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Install dependencies (boto3 for the handler under test, cfn-lint for template linting)
+        run: pip install --quiet -r requirements-dev.txt cfn-lint
       - name: Run unit tests (deterministic, no network)
         run: python3 -m unittest discover -s tests -v
       - name: Render and validate CloudFormation template
         run: |
-          pip install --quiet cfn-lint
           python3 scripts/render_template.py
           cfn-lint infra/template.rendered.yaml
 
@@ -50,6 +58,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Install dependencies (boto3 -- scripts/deploy.sh re-runs the test suite as a fail-closed gate)
+        run: pip install --quiet -r requirements-dev.txt
 
       - name: Configure AWS credentials via OIDC (no long-lived keys)
         uses: aws-actions/configure-aws-credentials@v4

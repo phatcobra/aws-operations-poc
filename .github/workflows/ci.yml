@@ -18,8 +18,8 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install dev tooling
-        run: pip install --quiet cfn-lint
+      - name: Install dependencies (boto3 for the handler under test, cfn-lint for template linting)
+        run: pip install --quiet -r requirements-dev.txt cfn-lint
 
       - name: Run unit tests (deterministic, no network)
         run: python3 -m unittest discover -s tests -v
