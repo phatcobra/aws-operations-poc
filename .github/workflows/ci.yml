@@ -29,3 +29,19 @@ jobs:
 
       - name: Lint rendered CloudFormation template
         run: cfn-lint infra/template.rendered.yaml
+
+      - name: Parse-check one-time PowerShell admin bootstrap
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            "scripts/bootstrap_admin.ps1",
+            [ref]$tokens,
+            [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.Message }
+            exit 1
+          }
+          Write-Host "PowerShell bootstrap syntax OK"
