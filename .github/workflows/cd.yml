@@ -41,6 +41,33 @@ jobs:
       - name: Install dependencies
         run: pip install --quiet -r requirements-dev.txt
 
+      - name: Capture non-secret OIDC trust claims
+        shell: bash
+        run: |
+          set -euo pipefail
+          response="$(curl -fsS \
+            -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com")"
+          token="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["value"])' <<<"$response")"
+          OIDC_TOKEN="$token" python3 - <<'PY'
+          import base64
+          import json
+          import os
+          from pathlib import Path
+
+          payload = os.environ["OIDC_TOKEN"].split(".")[1]
+          payload += "=" * (-len(payload) % 4)
+          claims = json.loads(base64.urlsafe_b64decode(payload))
+          safe_keys = [
+              "iss", "aud", "sub", "repository", "repository_id",
+              "repository_owner", "repository_owner_id", "environment", "ref"
+          ]
+          safe = {key: claims.get(key) for key in safe_keys}
+          Path("oidc-claims.json").write_text(json.dumps(safe, indent=2) + "\n", encoding="utf-8")
+          print(json.dumps(safe, indent=2))
+          PY
+          unset token response
+
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -53,11 +80,13 @@ jobs:
       - name: Verify live failure, recovery, persistence, and logs
         run: python3 scripts/verify_live.py --output live-evidence.json
 
-      - name: Upload live operational proof
+      - name: Upload operational proof and OIDC diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: aws-operations-poc-live-evidence-${{ github.sha }}
-          path: live-evidence.json
+          name: aws-operations-poc-proof-${{ github.sha }}
+          path: |
+            oidc-claims.json
+            live-evidence.json
           if-no-files-found: warn
           retention-days: 30
