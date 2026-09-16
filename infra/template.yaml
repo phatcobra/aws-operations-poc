@@ -2,11 +2,11 @@ AWSTemplateFormatVersion: "2010-09-09"
 Description: >
   aws-operations-poc: EventBridge-scheduled Lambda that fetches a public,
   keyless weather API with bounded retry/backoff and deterministic fault
-  injection, persists structured run evidence to DynamoDB, and logs
-  structured JSON to CloudWatch. Lambda code is inlined from src/app.py by
-  scripts/render_template.py (single source of truth, no S3 packaging step
-  needed for a function this small). Uses the pre-provisioned Lambda runtime
-  role; creates no IAM resources.
+  injection, persists structured run evidence to DynamoDB, logs structured
+  JSON to CloudWatch, and exposes a CloudWatch heartbeat/staleness alarm.
+  Lambda code is inlined from src/app.py by scripts/render_template.py
+  (single source of truth, no S3 packaging step needed for a function this
+  small). Uses the pre-provisioned Lambda runtime role; creates no IAM resources.
 
 Parameters:
   LambdaRuntimeRoleArn:
@@ -102,6 +102,27 @@ Resources:
       Principal: events.amazonaws.com
       SourceArn: !GetAtt ScheduleRule.Arn
 
+  HeartbeatStaleAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: aws-operations-poc-heartbeat-stale
+      AlarmDescription: >
+        Detects a stale scheduled workload when the Lambda receives fewer than
+        one invocation per hour for two consecutive one-hour periods.
+      ActionsEnabled: false
+      Namespace: AWS/Lambda
+      MetricName: Invocations
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref WorkerFunction
+      Statistic: Sum
+      Period: 3600
+      EvaluationPeriods: 2
+      DatapointsToAlarm: 2
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+
 Outputs:
   FunctionName:
     Value: !Ref WorkerFunction
@@ -113,3 +134,5 @@ Outputs:
     Value: !Ref ScheduleRule
   LogGroupName:
     Value: !Ref WorkerLogGroup
+  HeartbeatAlarmName:
+    Value: !Ref HeartbeatStaleAlarm

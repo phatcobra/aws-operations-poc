@@ -4,19 +4,33 @@ This file records the security model and the remaining account-level bootstrap r
 
 ## Current verified state
 
-The application stack `aws-operations-poc-main` has previously reached `CREATE_COMPLETE` in `us-east-2`, and repository CI passes its deterministic tests and CloudFormation linting.
+The application stack `aws-operations-poc-main` previously reached `CREATE_COMPLETE` in `us-east-2`. Current repository CI passes the deterministic unit suite and CloudFormation linting.
 
-The latest authenticated GitHub Actions test of the explicit deployment role reached the OIDC step and failed with:
+GitHub Actions now obtains a real OIDC token and records only non-secret trust claims. The claims were empirically observed from the `production` deployment job:
+
+```json
+{
+  "iss": "https://token.actions.githubusercontent.com",
+  "aud": "sts.amazonaws.com",
+  "sub": "repo:phatcobra@69565195/aws-operations-poc@1372530555:environment:production",
+  "repository": "phatcobra/aws-operations-poc",
+  "repository_id": "1372530555",
+  "repository_owner": "phatcobra",
+  "repository_owner_id": "69565195",
+  "environment": "production",
+  "ref": "refs/heads/main"
+}
+```
+
+The workflow supplies the explicit role ARN, but AWS currently rejects the exchange with:
 
 ```text
 Could not assume role with OIDC: Not authorized to perform sts:AssumeRoleWithWebIdentity
 ```
 
-That result is useful: the workflow now supplies a concrete `role-to-assume` ARN, so the remaining CD blocker is on the AWS OIDC provider/trust-policy side rather than a missing GitHub secret.
+Therefore the remaining CD blocker is specifically the AWS OIDC provider / trust configuration for the project GitHub role, not a missing GitHub secret or an uncertain subject claim.
 
-## Roles
-
-Existing project roles:
+## Project roles
 
 ```text
 Cloud workstation/deployer: arn:aws:iam::660838763909:role/claude-poc-role
@@ -25,17 +39,11 @@ Lambda runtime role:        arn:aws:iam::660838763909:role/aws-operations-poc-la
 GitHub CD role:              arn:aws:iam::660838763909:role/aws-operations-poc-github-deploy-role
 ```
 
-The CloudFormation template itself creates no IAM resources.
+The application CloudFormation stack creates no IAM resources.
 
-## GitHub OIDC trust
+## Required GitHub OIDC trust
 
-The deploy job runs under GitHub environment `production`. The repository uses GitHub's immutable OIDC subject format. The AWS trust policy must match this subject exactly:
-
-```text
-repo:phatcobra@69565195/aws-operations-poc@1372530555:environment:production
-```
-
-The account must contain the OIDC provider for:
+The account must contain the OIDC provider:
 
 ```text
 https://token.actions.githubusercontent.com
@@ -47,7 +55,7 @@ with audience/client ID:
 sts.amazonaws.com
 ```
 
-Minimum trust policy for `aws-operations-poc-github-deploy-role`:
+The trust policy on `aws-operations-poc-github-deploy-role` must be:
 
 ```json
 {
@@ -70,11 +78,11 @@ Minimum trust policy for `aws-operations-poc-github-deploy-role`:
 }
 ```
 
-The GitHub `production` environment should allow deployment from `main` only.
+The GitHub `production` environment should permit deployment from `main` only.
 
-## Minimum GitHub CD role permissions
+## Required GitHub CD role permissions
 
-The CD role needs two narrowly scoped capability groups: deploy the one project stack through the existing CloudFormation service role, and prove the deployed runtime behavior.
+The CD role deploys only the project stack through the existing CloudFormation service role and then performs the live acceptance proof against exact project resources.
 
 ```json
 {
@@ -131,29 +139,48 @@ The CD role needs two narrowly scoped capability groups: deploy the one project 
 }
 ```
 
-`sts:GetCallerIdentity` is used only to record the assumed-role ARN in the evidence artifact; AWS permits that identity call without a resource-scoped allow statement.
+`sts:GetCallerIdentity` is used only to record the assumed-role ARN in the evidence artifact.
+
+## CloudFormation service-role addition for heartbeat detection
+
+The stack now defines one native-metric CloudWatch alarm named `aws-operations-poc-heartbeat-stale`. It watches the Lambda `Invocations` metric and treats two consecutive one-hour periods with fewer than one invocation as stale. The alarm has no actions; its state is the health signal, so no SNS topic or notification infrastructure is needed.
+
+The existing `aws-operations-poc-cfn-role` therefore also needs this narrowly scoped statement:
+
+```json
+{
+  "Effect": "Allow",
+  "Action": [
+    "cloudwatch:PutMetricAlarm",
+    "cloudwatch:DeleteAlarms",
+    "cloudwatch:DescribeAlarms"
+  ],
+  "Resource": "arn:aws:cloudwatch:us-east-2:660838763909:alarm:aws-operations-poc-heartbeat-stale"
+}
+```
 
 ## Runtime proof
 
-Once OIDC trust and the permissions above are active, `.github/workflows/cd.yml` automatically runs `scripts/verify_live.py` after deployment. It verifies all three scenarios against the real AWS resources:
+Once the OIDC trust and permissions above are active, `.github/workflows/cd.yml` automatically deploys and runs `scripts/verify_live.py`. It proves:
 
 - normal success on attempt 1;
 - transient failure followed by bounded recovery on attempt 2;
-- permanent failure ending exactly at attempt 3 with `recovery_state=exhausted`.
+- permanent failure ending exactly at attempt 3 with `recovery_state=exhausted`;
+- persisted DynamoDB attempt history matches those exact transitions;
+- CloudWatch contains matching structured events for each run.
 
-The verifier uses a consistent DynamoDB query, waits for matching CloudWatch log events, and writes `live-evidence.json`. GitHub Actions uploads that file as a workflow artifact.
-
-This removes the need to broaden the cloud-workstation deploy identity merely to collect runtime proof.
+The verifier writes `live-evidence.json`; GitHub Actions uploads it as a workflow artifact tied to the commit SHA. The same workflow always uploads `oidc-claims.json`, so authentication failures remain diagnosable without exposing the OIDC token itself.
 
 ## Existing workstation deploy boundary
 
-The `claude-poc-role` remains intentionally narrow. It was verified to support the project CloudFormation lifecycle while direct Lambda invocation and direct DynamoDB/CloudWatch evidence reads were denied. That is acceptable once GitHub CD owns deployment acceptance and live proof.
+The `claude-poc-role` remains intentionally narrow. Direct runtime verification does not need to be added to that role because GitHub CD owns deployment acceptance and live proof once OIDC is active.
 
 ## Cost and blast-radius controls
 
 - Region: `us-east-2`.
 - Stack namespace: `aws-operations-poc-*`.
-- Runtime resources: exact project Lambda, table, schedule, and log group.
+- Runtime resources: exact project Lambda, table, schedule, log group, and heartbeat alarm.
+- One standard CloudWatch alarm; no custom metric is introduced for heartbeat detection.
 - No long-lived AWS keys in GitHub.
 - No IAM resources created by the application stack.
 - No S3 deployment bucket, NAT gateway, or always-on application compute.
