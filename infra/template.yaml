@@ -190,10 +190,6 @@ Resources:
                 "view": "timeSeries",
                 "stacked": false,
                 "region": "${AWS::Region}",
-                "period": 3600,
-                "metrics": [
-                  ["AWS/Lambda", "Invocations", "FunctionName", "aws-operations-poc-worker", {"stat": "Sum", "label": "Hourly invocations"}]
-                ],
                 "annotations": {
                   "alarms": ["arn:${AWS::Partition}:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:aws-operations-poc-heartbeat-stale"]
                 }
