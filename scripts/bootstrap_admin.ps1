@@ -196,13 +196,14 @@ try {
     Write-Host "PASS: GitHub deployment/live-proof permissions ready"
 
     # 5. Extend only the existing POC CloudFormation service role so the stack
-    #    can own one heartbeat/staleness alarm.
+    #    can own the heartbeat alarm and the exact operator dashboard.
     & aws iam get-role --role-name $CfnRole --profile $Profile --output json 1>$null 2>$null
     Assert-Success "POC CloudFormation role lookup"
 
-    $AlarmPolicyPath = Join-Path $Tmp "cfn-heartbeat-policy.json"
+    $ObservabilityPolicyPath = Join-Path $Tmp "cfn-observability-policy.json"
     $AlarmArn = "arn:aws:cloudwatch:${Region}:${Account}:alarm:aws-operations-poc-heartbeat-stale"
-    $AlarmPolicy = @{
+    $DashboardArn = "arn:aws:cloudwatch::${Account}:dashboard/aws-operations-poc-operations"
+    $ObservabilityPolicy = @{
         Version = "2012-10-17"
         Statement = @(
             @{
@@ -214,18 +215,28 @@ try {
                     "cloudwatch:DescribeAlarms"
                 )
                 Resource = $AlarmArn
+            },
+            @{
+                Sid = "ManagePocOperationsDashboard"
+                Effect = "Allow"
+                Action = @(
+                    "cloudwatch:PutDashboard",
+                    "cloudwatch:GetDashboard",
+                    "cloudwatch:DeleteDashboards"
+                )
+                Resource = $DashboardArn
             }
         )
     } | ConvertTo-Json -Depth 20
-    Write-Utf8NoBom $AlarmPolicyPath $AlarmPolicy
+    Write-Utf8NoBom $ObservabilityPolicyPath $ObservabilityPolicy
 
     & aws iam put-role-policy `
         --role-name $CfnRole `
         --policy-name AwsOperationsPocHeartbeatAlarm `
-        --policy-document "file://$AlarmPolicyPath" `
+        --policy-document "file://$ObservabilityPolicyPath" `
         --profile $Profile
-    Assert-Success "CloudFormation heartbeat-alarm permissions"
-    Write-Host "PASS: heartbeat alarm authority ready"
+    Assert-Success "CloudFormation observability permissions"
+    Write-Host "PASS: heartbeat alarm and operator dashboard authority ready"
 
     # 6. Restrict the exact GitHub production environment to main.
     $EnvBody = '{"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}'
