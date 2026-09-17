@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "generated_at": null,
+  "status": "unknown",
+  "status_message": "The first live status snapshot will appear after the next verified deployment.",
+  "last_scheduled_run_at": null,
+  "heartbeat": {
+    "state": "unknown",
+    "message": "The public page has not received a live schedule update yet."
+  },
+  "recent_runs": [],
+  "checks": [
+    {
+      "id": "automatic_runs",
+      "label": "Automatic runs",
+      "state": "unknown",
+      "message": "Waiting for a live snapshot."
+    },
+    {
+      "id": "failure_recovery",
+      "label": "Failure recovery",
+      "state": "unknown",
+      "message": "Waiting for the latest proof."
+    },
+    {
+      "id": "safety_limit",
+      "label": "Safety limit",
+      "state": "unknown",
+      "message": "Waiting for the latest proof."
+    },
+    {
+      "id": "monitoring",
+      "label": "Monitoring",
+      "state": "unknown",
+      "message": "Waiting for a live snapshot."
+    }
+  ],
+  "proof": {
+    "state": "unknown",
+    "verified_at": null,
+    "message": "The latest verified deployment will appear here.",
+    "url": "https://github.com/phatcobra/aws-operations-poc/actions"
+  }
+}

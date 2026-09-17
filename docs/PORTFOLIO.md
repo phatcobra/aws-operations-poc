@@ -2,7 +2,7 @@
 
 ## 30-second version
 
-I built and deployed a small AWS operations lab that authenticates from GitHub through OIDC, runs a Python Lambda on an EventBridge schedule, calls a public API, persists per-attempt evidence to DynamoDB, emits structured CloudWatch logs, and deliberately injects failures to prove bounded automatic recovery. The system also exposes a CloudFormation-managed CloudWatch operator dashboard for health, latency, heartbeat state, recent attempts, and recovery outcomes. The CD pipeline does not stop at deployment: it invokes the real workload in normal, transient-failure, and permanent-failure modes, verifies the exact DynamoDB history and CloudWatch logs, and stores the result as a GitHub Actions evidence artifact.
+I built and deployed a small AWS operations lab that authenticates from GitHub through OIDC, runs a Python Lambda on an EventBridge schedule, calls a public API, persists per-attempt evidence to DynamoDB, emits structured CloudWatch logs, and deliberately injects failures to prove bounded automatic recovery. The system exposes a CloudFormation-managed CloudWatch operator dashboard for detailed operations and a static, plain-English visitor page for people without AWS Console access. The CD pipeline does not stop at deployment: it invokes the real workload in normal, transient-failure, and permanent-failure modes, verifies the exact DynamoDB history and CloudWatch logs, and publishes a sanitized status snapshot with the result.
 
 ## Verified deployment
 
@@ -65,6 +65,10 @@ The permanent scenario is as important as the successful recovery: it proves the
 
 The CloudWatch dashboard `aws-operations-poc-operations` is the operational UI for the project. It shows Lambda health, duration, heartbeat/schedule health, recent structured execution attempts, and focused recovery outcomes. Because it is defined in CloudFormation, the UI is reproducible and deployed through the same CI/CD path as the workload.
 
+The static visitor page in `site/` is the human-facing explanation layer. It shows plain-English status, recent activity, system checks, and an offline simulation of success, recovery, and safe exhaustion. It does not expose raw logs or mutation controls.
+
+The public-site workflow publishes a fresh status snapshot only after successful CD/live proof. The snapshot is derived from the existing structured log stream and deliberately excludes identifiers and operational details that are not needed by visitors.
+
 ## Skills demonstrated
 
 AWS Lambda, EventBridge, DynamoDB, CloudWatch Dashboards, CloudWatch Logs and Metrics, CloudFormation, IAM/OIDC, Python, Git/GitHub, GitHub Actions CI/CD, structured logging, deterministic testing, failure injection, bounded retry/backoff, operational evidence, cost control, and least-privilege design.
@@ -89,6 +93,6 @@ Built an event-driven AWS workload with GitHub OIDC CI/CD, CloudFormation, Cloud
 
 **How do you prove it works?**  The CD pipeline invokes the deployed function in three modes, asserts the exact DynamoDB sequence, verifies matching CloudWatch events, and uploads a JSON evidence artifact tied to the commit SHA.
 
-**Why use a CloudWatch dashboard instead of building a custom frontend?**  This is an operations project, so the native AWS operator interface gives the highest signal with the least extra architecture. It directly exposes the metrics, alarm state, and structured execution evidence the system is designed to operate.
+**Why have both a CloudWatch dashboard and a public page?**  They serve different audiences. CloudWatch is the detailed operator interface inside AWS; the static visitor page explains the same system in plain English for someone who should not need AWS access. The visitor page is only a sanitized presentation layer and does not create a second workload.
 
-**How is cost controlled?**  The workload runs hourly at 128 MB, DynamoDB is on-demand, logs expire after 14 days, the dashboard reuses existing CloudWatch telemetry, and the design avoids always-on application compute and network infrastructure.
+**How is cost controlled?**  The workload runs hourly at 128 MB, DynamoDB is on-demand, logs expire after 14 days, the dashboard reuses existing CloudWatch telemetry, the visitor page is static, and the design avoids always-on application compute and network infrastructure.

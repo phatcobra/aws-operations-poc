@@ -40,6 +40,7 @@ GitHub change
 → public API call
 → CloudWatch logs + metrics + heartbeat alarm
 → CloudWatch operator dashboard
+→ sanitized public visitor page
 → DynamoDB execution evidence
 → controlled failure
 → automatic bounded recovery
@@ -80,6 +81,7 @@ The stack is `aws-operations-poc-main` in `us-east-2`.
 | CloudWatch Metrics | Native Lambda metrics | Invocation/duration/platform health signals |
 | CloudWatch Alarm | `aws-operations-poc-heartbeat-stale` | Detects two consecutive missing hourly invocations |
 | CloudWatch Dashboard | `aws-operations-poc-operations` | Operator UI for health, latency, recent attempts, and recovery outcomes |
+| GitHub Pages | Public visitor page | Plain-English read-only status and safe recovery simulation |
 | CloudFormation | `aws-operations-poc-main` | Infrastructure as code and deployment boundary |
 | GitHub Actions | CI + CD | Tests, validation, OIDC deployment, live proof |
 
@@ -98,6 +100,16 @@ It shows:
 - focused `recovered` and `exhausted` outcomes.
 
 The recent-run tables use the same structured CloudWatch events validated by the CD live-proof step. Durable attempt history remains in DynamoDB.
+
+## Public visitor page
+
+The repository also contains a static visitor page for people who do not have AWS Console access. It is designed to answer one question quickly: **is the system working?**
+
+The page shows a sanitized status snapshot, recent activity, plain-English system checks, and the latest live-proof result. It also includes a client-side simulation of a normal run, a temporary failure that recovers, and a persistent failure that stops after three tries. The simulation never calls AWS and cannot change the real workload.
+
+The status snapshot is generated only after a successful CD/live-proof run. The publisher reads the existing Lambda log group through the project-scoped GitHub OIDC role and copies no raw logs, run IDs, ARNs, credentials, or error details into the public site. The CloudWatch dashboard remains the detailed operator interface.
+
+The public-site workflow publishes the `site/` directory to GitHub Pages after successful CD. If Pages has not yet been enabled for the repository, enable **Settings → Pages → Source: GitHub Actions** once; the workflow then publishes the page automatically after the next successful CD run.
 
 ## Reliability behavior
 
@@ -201,6 +213,7 @@ The deliberate application-level failures are handled inside the bounded recover
 - CloudWatch Logs: 14-day retention.
 - Heartbeat uses the native Lambda invocation metric, so it does not create a custom metric.
 - Dashboard widgets reuse native metrics and existing logs; no always-on UI compute is introduced.
+- The public page is static GitHub Pages output; its status snapshot is generated only by a successful proof workflow.
 - No NAT gateway, VPC, S3 deployment bucket, or always-on application compute.
 
 ## Run locally
@@ -230,9 +243,10 @@ python3 scripts/verify_live.py --output live-evidence.json
 src/                  Lambda workload
 tests/                deterministic offline tests
 infra/                CloudFormation
-scripts/              render, deploy, manual/live verification
-docs/                 security boundary and portfolio explanation
 .github/workflows/     CI and CD
+scripts/              render, deploy, manual/live verification
+site/                 public visitor page and fallback status contract
+docs/                 security boundary and portfolio explanation
 ```
 
 For an interview-oriented explanation and resume wording, see [`docs/PORTFOLIO.md`](docs/PORTFOLIO.md).

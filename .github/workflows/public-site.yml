@@ -1,0 +1,70 @@
+name: Public site
+
+# Publish the visitor-facing page only after the real CD/live-proof workflow
+# succeeds. The page is static; this workflow writes a sanitized snapshot from
+# the existing Lambda log group and never exposes AWS credentials or raw logs.
+
+on:
+  workflow_run:
+    workflows: ["CD"]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+  pages: write
+
+jobs:
+  build:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install status publisher dependency
+        run: pip install --quiet boto3
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::660838763909:role/aws-operations-poc-github-deploy-role
+          aws-region: us-east-2
+
+      - name: Generate sanitized status snapshot
+        env:
+          PROOF_RUN_URL: ${{ github.event.workflow_run.html_url || '' }}
+        run: |
+          set -euo pipefail
+          if [ -n "$PROOF_RUN_URL" ]; then
+            python3 scripts/publish_status.py --output site/status.json --run-url "$PROOF_RUN_URL"
+          else
+            python3 scripts/publish_status.py --output site/status.json
+          fi
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload public site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
