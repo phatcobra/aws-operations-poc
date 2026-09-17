@@ -2,19 +2,19 @@
   "schema_version": 1,
   "generated_at": null,
   "status": "unknown",
-  "status_message": "The first live status snapshot will appear after the next verified deployment.",
+  "status_message": "The helper's first live update will appear after the next verified deployment.",
   "last_scheduled_run_at": null,
   "heartbeat": {
     "state": "unknown",
-      "message": "The public dashboard has not received a live schedule update yet."
+      "message": "The helper has not checked in yet."
   },
   "recent_runs": [],
   "checks": [
     {
       "id": "automatic_runs",
-      "label": "Automatic runs",
+      "label": "Hourly check",
       "state": "unknown",
-      "message": "Waiting for a live snapshot."
+      "message": "Waiting for the helper's first update."
     },
     {
       "id": "failure_recovery",

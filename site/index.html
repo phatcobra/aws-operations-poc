@@ -3,15 +3,15 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#f3f6f9" />
+    <meta name="theme-color" content="#f6f7f2" />
     <meta
       name="description"
-      content="A public, read-only operations dashboard for the AWS Operations POC."
+      content="A simple explanation of an automatic weather-checking helper."
     />
-    <title>AWS Operations POC · Operations dashboard</title>
+    <title>The Hourly Helper</title>
     <link
       rel="icon"
-      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%231c4f80'/%3E%3Cpath d='M14 45V19h8v18h8V25h8v12h8V13h8v32z' fill='%23ffffff'/%3E%3C/svg%3E"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23345e79'/%3E%3Ccircle cx='32' cy='32' r='19' fill='none' stroke='%23fffefb' stroke-width='4'/%3E%3Cpath d='M32 20v13l9 6' fill='none' stroke='%23fffefb' stroke-linecap='round' stroke-width='4'/%3E%3C/svg%3E"
     />
     <link rel="stylesheet" href="./styles.css" />
     <script src="./app.js" defer></script>
@@ -20,24 +20,18 @@
     <a class="skip-link" href="#main-content">Skip to content</a>
 
     <div class="page-shell">
-      <header class="topbar">
-        <a class="brand" href="./" aria-label="AWS Operations POC home">
-          <span class="brand-mark" aria-hidden="true">
-            <span></span><span></span><span></span><span></span>
-          </span>
+      <header class="site-header">
+        <a class="brand" href="./" aria-label="The Hourly Helper home">
+          <span class="clock-mark" aria-hidden="true"><span></span></span>
           <span class="brand-copy">
-            <strong>AWS Operations POC</strong>
-            <small>Public operations dashboard</small>
+            <strong>The Hourly Helper</strong>
+            <small>An automatic check you can understand</small>
           </span>
         </a>
 
-        <div class="toolbar">
-          <span class="read-only-badge"><span class="status-dot" aria-hidden="true"></span>Public / read-only</span>
-          <button class="toolbar-button" id="explain-toggle" type="button" aria-pressed="false" aria-controls="explain-panel">
-            <span class="button-glyph" aria-hidden="true">?</span>
-            Explain mode
-          </button>
-          <button class="toolbar-button" id="refresh-button" type="button">
+        <div class="header-actions">
+          <span class="read-only-badge"><span class="status-dot" aria-hidden="true"></span>Read-only</span>
+          <button class="header-button" id="refresh-button" type="button">
             <span class="refresh-glyph" aria-hidden="true">↻</span>
             Refresh
           </button>
@@ -45,229 +39,169 @@
       </header>
 
       <main id="main-content">
-        <section class="intro-row" aria-labelledby="page-title">
-          <div>
-            <p class="eyebrow">LIVE OPERATIONS SNAPSHOT</p>
-            <h1 id="page-title">Operations dashboard</h1>
-            <p class="intro-copy">
-              A sanitized view of the workload's health, schedule signal, recovery behavior,
-              and recent runs. Read it top to bottom: status, signals, runs, then proof.
+        <section class="intro" aria-labelledby="page-title">
+          <div class="intro-copy">
+            <p class="eyebrow">A SIMPLE WAY TO SEE IT</p>
+            <h1 id="page-title">A little helper checks the weather every hour.</h1>
+            <p>
+              It wakes up on its own, asks for the latest reading, writes down what happened,
+              and knows when to try again—or stop.
             </p>
           </div>
 
-          <aside class="snapshot-meta" aria-label="Snapshot metadata">
-            <div class="meta-row">
-              <span>Snapshot</span>
-              <strong id="snapshot-relative">Loading…</strong>
-              <small id="snapshot-absolute">Waiting for the published snapshot.</small>
+          <aside class="current-card" aria-labelledby="current-heading">
+            <div class="current-card-top">
+              <span class="eyebrow">RIGHT NOW</span>
+              <span class="state-badge state-unknown" id="overall-badge">WAITING</span>
             </div>
-            <div class="meta-row">
-              <span>Source</span>
-              <strong>Sanitized status</strong>
-              <small id="source-state">Loading from status.json</small>
+            <div class="current-state">
+              <div class="current-symbol state-unknown" id="status-symbol" aria-hidden="true">?</div>
+              <div>
+                <h2 id="current-heading">Checking the latest update</h2>
+                <p id="status-message">The page is waiting for the helper's latest check.</p>
+              </div>
+            </div>
+            <div class="current-footer">
+              <span>Last check</span>
+              <strong id="last-run-relative">Not available</strong>
+              <small id="last-run-absolute">No automatic check published yet.</small>
             </div>
           </aside>
         </section>
 
-        <section class="explain-panel panel" id="explain-panel" aria-labelledby="explain-heading" hidden>
-          <div class="explain-header">
+        <section class="story panel" id="story-section" aria-labelledby="story-heading">
+          <div class="section-heading">
             <div>
-              <p class="section-kicker">WALKTHROUGH</p>
-              <h2 id="explain-heading">Explain the dashboard as you go</h2>
+              <p class="eyebrow">FOLLOW THE STORY</p>
+              <h2 id="story-heading">What the helper does</h2>
+              <p class="section-intro">Use the arrows or the numbered steps to walk through it.</p>
             </div>
-            <div class="explain-controls">
-              <button class="step-control" id="previous-step" type="button" aria-label="Previous explanation step">←</button>
-              <span id="step-count">1 / 5</span>
-              <button class="step-control" id="next-step" type="button" aria-label="Next explanation step">→</button>
+            <div class="story-controls">
+              <button class="round-button" id="previous-step" type="button" aria-label="Previous story step">←</button>
+              <span id="step-count">1 of 6</span>
+              <button class="round-button" id="next-step" type="button" aria-label="Next story step">→</button>
             </div>
           </div>
-          <p class="explain-title" id="explain-title">1. Start with the health signal</p>
-          <p class="explain-copy" id="explain-copy">
-            This is the first question: can the public snapshot confirm that the scheduled workload is healthy?
-          </p>
-          <div class="step-nav" id="step-nav" role="tablist" aria-label="Dashboard explanation steps"></div>
+
+          <div class="story-progress" aria-hidden="true"><span id="story-progress"></span></div>
+
+          <div class="story-content" aria-live="polite">
+            <div class="story-icon" id="story-icon" aria-hidden="true">◷</div>
+            <div class="story-copy">
+              <p class="story-step" id="story-step">STEP 1</p>
+              <h3 id="story-title">The helper wakes up</h3>
+              <p id="story-description">Every hour, a clock tells it to start on its own.</p>
+              <div class="say-this">
+                <span>What you can say</span>
+                <p id="story-say">“Nobody has to press a button. It starts on a schedule.”</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="story-nav" id="story-nav" role="tablist" aria-label="Steps in the helper's story"></div>
         </section>
 
-        <section class="dashboard-section panel health-section" id="health-section" data-walkthrough-target="health" aria-labelledby="health-heading">
-          <div class="section-header">
-            <div class="section-title">
-              <span class="section-number" aria-hidden="true">01</span>
-              <div>
-                <p class="section-kicker">HEALTH</p>
-                <h2 id="health-heading">Overall system status</h2>
-              </div>
+        <section class="recent panel" id="recent-section" aria-labelledby="recent-heading">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">WHAT HAPPENED</p>
+              <h2 id="recent-heading">Recent checks</h2>
+              <p class="section-intro">Each line is one time the helper ran.</p>
             </div>
-            <span class="state-badge state-unknown" id="overall-badge">UNKNOWN</span>
+            <div class="updated-note">
+              <span>Snapshot</span>
+              <strong id="snapshot-relative">Loading…</strong>
+              <small id="snapshot-absolute">Waiting for the published snapshot.</small>
+            </div>
           </div>
 
-          <div class="health-grid">
-            <div class="health-summary">
-              <div class="health-symbol state-unknown" id="status-symbol" aria-hidden="true">?</div>
-              <div>
-                <p class="field-label">CURRENT STATE</p>
-                <h3 id="status-title">Checking the latest snapshot</h3>
-                <p class="status-message" id="status-message">The page is waiting for a sanitized status file.</p>
-              </div>
-            </div>
+          <div class="recent-list" id="recent-list" aria-live="polite">
+            <div class="loading-row"></div>
+            <div class="loading-row"></div>
+            <div class="loading-row short"></div>
+          </div>
+        </section>
 
-            <dl class="headline-metrics">
-              <div class="headline-metric">
-                <dt>Last scheduled run</dt>
-                <dd id="last-run-relative">Not available</dd>
-                <small id="last-run-absolute">No automatic run published yet.</small>
+        <section class="problem panel" id="problem-section" aria-labelledby="problem-heading">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">WHEN SOMETHING GOES WRONG</p>
+              <h2 id="problem-heading">It tries, but it does not get stuck.</h2>
+              <p class="section-intro">The rule is simple: try the job, try again when it makes sense, then stop safely.</p>
+            </div>
+          </div>
+
+          <div class="rule-grid">
+            <article class="rule-card">
+              <span class="rule-number">1</span>
+              <div>
+                <h3>Try once</h3>
+                <p>Ask the weather service for the current reading.</p>
               </div>
-              <div class="headline-metric">
-                <dt>Latest latency</dt>
-                <dd id="latest-latency">—</dd>
-                <small>Final attempt in the latest run</small>
+            </article>
+            <article class="rule-card">
+              <span class="rule-number">2</span>
+              <div>
+                <h3>Try again</h3>
+                <p>If there is a temporary problem, wait briefly and ask again.</p>
               </div>
-              <div class="headline-metric">
-                <dt>Recent runs</dt>
-                <dd id="recent-run-count">0</dd>
-                <small>Runs in this snapshot</small>
+            </article>
+            <article class="rule-card">
+              <span class="rule-number">3</span>
+              <div>
+                <h3>Stop at three</h3>
+                <p>If it still cannot get an answer, stop and write down the problem.</p>
               </div>
+            </article>
+          </div>
+
+          <div class="plain-summary">
+            <span class="summary-icon" aria-hidden="true">✓</span>
+            <p><strong>The important part:</strong> the helper is allowed to recover, but it is never allowed to keep trying forever.</p>
+          </div>
+        </section>
+
+        <section class="proof panel" id="proof-section" aria-labelledby="proof-heading">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">WE TESTED THE RULE</p>
+              <h2 id="proof-heading">It knows when to keep trying and when to stop.</h2>
+            </div>
+            <span class="state-badge state-unknown" id="proof-badge">WAITING</span>
+          </div>
+          <p class="proof-message" id="proof-message">The latest live test will appear here.</p>
+          <div class="proof-list" id="proof-list"></div>
+          <a class="source-link" id="proof-link" href="https://github.com/phatcobra/aws-operations-poc/actions" target="_blank" rel="noreferrer">
+            See the project proof <span aria-hidden="true">↗</span>
+          </a>
+        </section>
+
+        <details class="technical panel" id="technical-details">
+          <summary>
+            <span>
+              <span class="eyebrow">FOR CURIOUS VISITORS</span>
+              <strong>The computer version</strong>
+            </span>
+            <span class="summary-plus" aria-hidden="true">+</span>
+          </summary>
+          <div class="technical-content">
+            <p>The friendly story above describes a real AWS workload. These are the computer names for the same six steps:</p>
+            <dl>
+              <div><dt>Starts every hour</dt><dd>EventBridge schedule</dd></div>
+              <div><dt>Does the work</dt><dd>Python Lambda function</dd></div>
+              <div><dt>Writes down the result</dt><dd>DynamoDB attempt history</dd></div>
+              <div><dt>Watches for a late check</dt><dd>CloudWatch metrics and heartbeat alarm</dd></div>
+              <div><dt>Tries again safely</dt><dd>Bounded retry policy with a maximum of three attempts</dd></div>
+              <div><dt>Publishes this page</dt><dd>GitHub Actions and GitHub Pages</dd></div>
             </dl>
+            <p class="technical-note">This public page receives a sanitized snapshot. It cannot start the helper, create a failure, expose private logs, or change AWS.</p>
           </div>
-
-          <div class="what-it-means">
-            <span class="meaning-label">What this means</span>
-            <p>The overall status combines schedule freshness with the latest scheduled outcome. Unknown is intentional when the public snapshot cannot confirm the signal.</p>
-          </div>
-        </section>
-
-        <section class="dashboard-section" id="signals-section" data-walkthrough-target="signals" aria-labelledby="signals-heading">
-          <div class="section-header section-header-outside">
-            <div class="section-title">
-              <span class="section-number" aria-hidden="true">02</span>
-              <div>
-                <p class="section-kicker">SIGNALS</p>
-                <h2 id="signals-heading">Heartbeat and operating checks</h2>
-              </div>
-            </div>
-            <p class="section-side-note">The signals below explain why the headline status has its current value.</p>
-          </div>
-          <div class="signal-grid" id="signal-grid" aria-live="polite">
-            <div class="signal-card skeleton-card"></div>
-            <div class="signal-card skeleton-card"></div>
-            <div class="signal-card skeleton-card"></div>
-            <div class="signal-card skeleton-card"></div>
-          </div>
-        </section>
-
-        <section class="dashboard-section panel runs-section" id="runs-section" data-walkthrough-target="runs" aria-labelledby="runs-heading">
-          <div class="section-header">
-            <div class="section-title">
-              <span class="section-number" aria-hidden="true">03</span>
-              <div>
-                <p class="section-kicker">EXECUTION HISTORY</p>
-                <h2 id="runs-heading">Recent runs</h2>
-              </div>
-            </div>
-            <p class="section-side-note">One row is one invocation, not one individual attempt.</p>
-          </div>
-
-          <div class="outcome-summary" aria-label="Recent run outcome counts">
-            <div class="outcome-count"><span class="outcome-marker success" aria-hidden="true"></span><strong id="success-count">0</strong><span>Success</span></div>
-            <div class="outcome-count"><span class="outcome-marker recovered" aria-hidden="true"></span><strong id="recovered-count">0</strong><span>Recovered</span></div>
-            <div class="outcome-count"><span class="outcome-marker exhausted" aria-hidden="true"></span><strong id="exhausted-count">0</strong><span>Exhausted</span></div>
-            <div class="outcome-count"><span class="outcome-marker problem" aria-hidden="true"></span><strong id="problem-count">0</strong><span>Problem</span></div>
-          </div>
-
-          <div class="runs-layout">
-            <div class="table-wrap">
-              <table>
-                <caption class="sr-only">Recent sanitized workload runs</caption>
-                <thead>
-                  <tr>
-                    <th scope="col">Time</th>
-                    <th scope="col">Trigger</th>
-                    <th scope="col">Outcome</th>
-                    <th scope="col">Attempts</th>
-                    <th scope="col">Latency</th>
-                  </tr>
-                </thead>
-                <tbody id="runs-body">
-                  <tr><td colspan="5" class="table-empty">Loading recent runs…</td></tr>
-                </tbody>
-              </table>
-            </div>
-
-            <aside class="timeline-card" aria-labelledby="timeline-heading">
-              <div class="mini-header">
-                <div>
-                  <p class="field-label">LATEST FIRST</p>
-                  <h3 id="timeline-heading">Outcome timeline</h3>
-                </div>
-                <span class="timeline-line-key" aria-hidden="true"></span>
-              </div>
-              <ol class="timeline" id="timeline" aria-live="polite">
-                <li class="timeline-empty">Loading timeline…</li>
-              </ol>
-            </aside>
-          </div>
-
-          <div class="what-it-means">
-            <span class="meaning-label">How to read it</span>
-            <p>Attempts show the bounded recovery loop in action. Recovered means a later attempt succeeded; exhausted means the system stopped at its safety limit.</p>
-          </div>
-        </section>
-
-        <div class="lower-grid">
-          <section class="dashboard-section panel proof-section" id="proof-section" data-walkthrough-target="proof" aria-labelledby="proof-heading">
-            <div class="section-header">
-              <div class="section-title">
-                <span class="section-number" aria-hidden="true">04</span>
-                <div>
-                  <p class="section-kicker">DEPLOYMENT PROOF</p>
-                  <h2 id="proof-heading">Verified behavior</h2>
-                </div>
-              </div>
-              <span class="state-badge state-unknown" id="proof-badge">UNKNOWN</span>
-            </div>
-
-            <p class="proof-message" id="proof-message">The latest verified deployment will appear here.</p>
-            <div class="proof-scenarios" id="proof-scenarios"></div>
-            <a class="source-link" id="proof-link" href="https://github.com/phatcobra/aws-operations-poc/actions" target="_blank" rel="noreferrer">
-              Open GitHub Actions proof <span aria-hidden="true">↗</span>
-            </a>
-          </section>
-
-          <section class="dashboard-section panel boundary-section" id="boundary-section" data-walkthrough-target="boundary" aria-labelledby="boundary-heading">
-            <div class="section-header">
-              <div class="section-title">
-                <span class="section-number" aria-hidden="true">05</span>
-                <div>
-                  <p class="section-kicker">BOUNDARY</p>
-                  <h2 id="boundary-heading">What this page can tell you</h2>
-                </div>
-              </div>
-            </div>
-
-            <dl class="boundary-list">
-              <div>
-                <dt>Shows</dt>
-                <dd>Sanitized health, schedule freshness, outcomes, attempts, and latency.</dd>
-              </div>
-              <div>
-                <dt>Does not show</dt>
-                <dd>Raw logs, run IDs, ARNs, credentials, or private AWS details.</dd>
-              </div>
-              <div>
-                <dt>Can do</dt>
-                <dd>Refresh this published snapshot and walk through its meaning.</dd>
-              </div>
-              <div>
-                <dt>Cannot do</dt>
-                <dd>Invoke AWS, inject a fault, or change any resource.</dd>
-              </div>
-            </dl>
-          </section>
-        </div>
+        </details>
       </main>
 
       <footer class="site-footer">
-        <span>Public read-only view · status is published from the project workflow.</span>
-        <a href="https://github.com/phatcobra/aws-operations-poc" target="_blank" rel="noreferrer">View source on GitHub ↗</a>
+        <span>A simple window into the AWS Operations POC.</span>
+        <a href="https://github.com/phatcobra/aws-operations-poc" target="_blank" rel="noreferrer">View the project on GitHub ↗</a>
       </footer>
     </div>
   </body>

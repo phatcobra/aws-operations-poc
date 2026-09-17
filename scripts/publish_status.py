@@ -181,15 +181,15 @@ def latest_scheduled_run(records: list[dict[str, Any]]) -> dict[str, Any] | None
 def schedule_health(latest: dict[str, Any] | None, now: datetime | None = None) -> dict[str, str]:
     """Derive a conservative public schedule signal from structured logs."""
     if latest is None:
-        return {"state": "unknown", "message": "No automatic check has been seen yet."}
+        return {"state": "unknown", "message": "No hourly check has been seen yet."}
     now = now or _now()
     timestamp = _parse_timestamp(latest.get("timestamp"))
     if timestamp is None:
-        return {"state": "unknown", "message": "The latest automatic check has no usable timestamp."}
+        return {"state": "unknown", "message": "The latest hourly check has no usable time."}
     age = now - timestamp
     if age > timedelta(hours=2):
-        return {"state": "stale", "message": "No automatic check has been seen in the last two hours."}
-    return {"state": "ok", "message": "An automatic check ran recently."}
+        return {"state": "stale", "message": "The helper has not checked in during the last two hours."}
+    return {"state": "ok", "message": "The helper checked in recently."}
 
 
 def _check(check_id: str, label: str, state: str, message: str) -> dict[str, str]:
@@ -238,7 +238,7 @@ def proof_summary(proof: dict[str, Any] | None, run_url: str = "") -> dict[str, 
         "state": "verified" if verified else "unknown",
         "verified_at": proof.get("verified_at") if proof else _now().isoformat(),
         "message": (
-            "A live deployment test passed."
+            "The live test passed."
             if verified
             else "The latest deployment proof was not available."
         ),
@@ -259,16 +259,16 @@ def build_snapshot(
     recent = summarize_runs(records)
     if heartbeat["state"] == "stale":
         overall = "degraded"
-        status_message = "The automatic check is late. The system is showing the issue without taking action."
+        status_message = "The helper is late. The page is showing the issue without taking action."
     elif heartbeat["state"] == "unknown" or latest is None:
         overall = "unknown"
-        status_message = "The page cannot confirm the latest automatic check yet."
+        status_message = "The page cannot confirm the helper's latest check yet."
     elif _public_result(latest) not in {"success", "recovered"}:
         overall = "degraded"
-        status_message = "The latest automatic run reported a problem; the system recorded it safely."
+        status_message = "The latest check had a problem; the helper recorded it safely."
     else:
         overall = "healthy"
-        status_message = "Automatic checks are running and the latest check completed normally."
+        status_message = "The helper is on schedule, and the latest check finished normally."
 
     proof = proof_summary(proof, run_url)
     transient_ok = proof.get("scenarios", {}).get("transient", {}).get("result") == "recovered"
@@ -289,7 +289,7 @@ def build_snapshot(
         "checks": [
             _check(
                 "automatic_runs",
-                "Automatic runs",
+                "Hourly check",
                 automatic_state,
                 "The schedule is checking in." if automatic_state == "pass" else heartbeat["message"],
             ),
@@ -297,19 +297,19 @@ def build_snapshot(
                 "failure_recovery",
                 "Failure recovery",
                 "pass" if transient_ok else "unknown",
-                "A temporary failure recovered automatically." if transient_ok else "Waiting for the latest live proof.",
+                "A temporary problem cleared on the second try." if transient_ok else "Waiting for the latest live proof.",
             ),
             _check(
                 "safety_limit",
                 "Safety limit",
                 "pass" if permanent_ok else "unknown",
-                "A persistent failure stopped after three tries." if permanent_ok else "Waiting for the latest live proof.",
+                "A problem that did not clear stopped after three tries." if permanent_ok else "Waiting for the latest live proof.",
             ),
             _check(
                 "monitoring",
                 "Monitoring",
                 monitoring_state,
-                "Recent activity is being recorded." if monitoring_state == "pass" else heartbeat["message"],
+                "Recent checks are being written down." if monitoring_state == "pass" else heartbeat["message"],
             ),
         ],
         "proof": proof,
