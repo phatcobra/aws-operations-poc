@@ -22,7 +22,7 @@ REGION = "us-east-2"
 LOG_GROUP_NAME = "/aws/lambda/aws-operations-poc-worker"
 LOOKBACK_HOURS = 26
 MAX_LOG_PAGES = 20
-MAX_PUBLIC_RUNS = 8
+MAX_PUBLIC_RUNS = 12
 ALLOWED_EVENTS = {"run_success", "run_attempt_failed"}
 
 
@@ -157,10 +157,26 @@ def summarize_runs(records: list[dict[str, Any]], limit: int = MAX_PUBLIC_RUNS) 
                 "result": _public_result(final),
                 "attempts": max(_as_int(row.get("attempt_number")) for row in ordered),
                 "latency_ms": final.get("latency_ms"),
+                "attempt_history": [
+                    {
+                        "attempt": _as_int(row.get("attempt_number")),
+                        "status": row.get("status") if row.get("status") in {"success", "failure"} else "unknown",
+                        "recovery_state": row.get("recovery_state") if row.get("recovery_state") in {"not_needed", "retrying", "recovered", "exhausted"} else "unknown",
+                    }
+                    for row in ordered[:3]
+                ],
             }
         )
     summaries.sort(key=lambda row: row["at"], reverse=True)
-    return summaries[:limit]
+    if limit <= 0:
+        return []
+    selected = summaries[:limit]
+    # A burst of deployment tests must not hide the newest hourly check.
+    latest_hourly = next((row for row in summaries if row["trigger"] == "automatic"), None)
+    if latest_hourly and latest_hourly not in selected:
+        selected[-1] = latest_hourly
+        selected.sort(key=lambda row: row["at"], reverse=True)
+    return selected
 
 
 def latest_scheduled_run(records: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -187,6 +203,8 @@ def schedule_health(latest: dict[str, Any] | None, now: datetime | None = None) 
     if timestamp is None:
         return {"state": "unknown", "message": "The latest hourly check has no usable time."}
     age = now - timestamp
+    if age < -timedelta(minutes=1):
+        return {"state": "unknown", "message": "The latest check has a future timestamp."}
     if age > timedelta(hours=2):
         return {"state": "stale", "message": "The helper has not checked in during the last two hours."}
     return {"state": "ok", "message": "The helper checked in recently."}
@@ -197,53 +215,66 @@ def _check(check_id: str, label: str, state: str, message: str) -> dict[str, str
 
 
 def proof_summary(proof: dict[str, Any] | None, run_url: str = "") -> dict[str, Any]:
-    """Expose only the three verified outcome labels and attempt counts."""
-    if not proof and not run_url:
-        return {
-            "state": "unknown",
-            "verified_at": None,
-            "message": "The latest verified deployment will appear here.",
-            "url": "https://github.com/phatcobra/aws-operations-poc/actions",
-        }
+    """Verify the artifact contract; a workflow URL alone is never evidence."""
+    from urllib.parse import urlparse
+    import re
 
-    scenarios: dict[str, dict[str, Any]] = {}
-    if proof:
-        for name, data in proof.get("scenarios", {}).items():
-            final_status = data.get("final_status")
-            recovery_state = data.get("recovery_state")
-            if final_status == "success" and recovery_state == "recovered":
-                result = "recovered"
-            elif final_status == "success":
-                result = "success"
-            elif recovery_state == "exhausted":
-                result = "exhausted"
-            else:
-                result = "problem"
-            scenarios[name] = {
-                "result": result,
-                "attempts": _as_int(data.get("final_attempt"), 0),
-            }
-    elif run_url:
-        scenarios = {
-            "normal": {"result": "success", "attempts": 1},
-            "transient": {"result": "recovered", "attempts": 2},
-            "permanent": {"result": "exhausted", "attempts": 3},
-        }
-
-    verified = bool(
-        (proof and proof.get("result") == "pass")
-        or (run_url and scenarios)
+    parsed = urlparse(run_url)
+    safe_url = (
+        run_url
+        if parsed.scheme == "https" and parsed.netloc == "github.com"
+        and re.fullmatch(r"/phatcobra/aws-operations-poc/actions/runs/\d+", parsed.path)
+        and not parsed.query and not parsed.fragment
+        else "https://github.com/phatcobra/aws-operations-poc/actions"
     )
+    unknown = {
+        "state": "unknown", "source": "unavailable", "verified_at": None,
+        "message": "A complete verified evidence artifact is not available.",
+        "url": safe_url, "scenarios": {},
+    }
+    if not isinstance(proof, dict) or proof.get("result") != "pass":
+        return unknown
+    verified_at = _parse_timestamp(proof.get("verified_at"))
+    if verified_at is None:
+        return unknown
+    expected = {
+        "normal": [(1, "success", "not_needed")],
+        "transient": [(1, "failure", "retrying"), (2, "success", "recovered")],
+        "permanent": [(1, "failure", "retrying"), (2, "failure", "retrying"), (3, "failure", "exhausted")],
+    }
+    raw_scenarios = proof.get("scenarios")
+    if not isinstance(raw_scenarios, dict):
+        return unknown
+    scenarios = {}
+    for name, sequence in expected.items():
+        data = raw_scenarios.get(name)
+        if not isinstance(data, dict) or not isinstance(data.get("persisted_attempts"), list):
+            return unknown
+        rows = data["persisted_attempts"]
+        if not all(isinstance(row, dict) for row in rows):
+            return unknown
+        actual = [
+            (_as_int(row.get("attempt_number")), row.get("status"), row.get("recovery_state"))
+            for row in rows
+        ]
+        final = sequence[-1]
+        if (
+            actual != sequence
+            or _as_int(data.get("final_attempt")) != final[0]
+            or data.get("final_status") != final[1]
+            or data.get("recovery_state") != final[2]
+            or _as_int(data.get("cloudwatch_log_events")) < 1
+        ):
+            return unknown
+        scenarios[name] = {
+            "result": {"normal": "success", "transient": "recovered", "permanent": "exhausted"}[name],
+            "attempts": final[0],
+        }
     return {
-        "state": "verified" if verified else "unknown",
-        "verified_at": proof.get("verified_at") if proof else _now().isoformat(),
-        "message": (
-            "The live test passed."
-            if verified
-            else "The latest deployment proof was not available."
-        ),
-        "url": run_url or "https://github.com/phatcobra/aws-operations-poc/actions",
-        "scenarios": scenarios,
+        "state": "verified", "source": "evidence_artifact",
+        "verified_at": verified_at.isoformat(),
+        "message": "All three scenarios passed live verification.",
+        "url": safe_url, "scenarios": scenarios,
     }
 
 
@@ -279,7 +310,7 @@ def build_snapshot(
     monitoring_state = "pass" if heartbeat["state"] == "ok" else "fail" if heartbeat["state"] == "stale" else "unknown"
     automatic_state = monitoring_state
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "generated_at": now.isoformat(),
         "status": overall,
         "status_message": status_message,

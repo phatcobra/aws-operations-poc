@@ -2,7 +2,7 @@
 
 ## 30-second version
 
-I built a small AWS system that checks the weather every hour. A scheduled worker asks for the current reading, writes down what happened, tries again after a temporary problem, and stops after three tries. Behind that simple story are Lambda, EventBridge, DynamoDB, CloudWatch, CloudFormation, and GitHub Actions. The public page tells the story in six steps, shows the latest real checks, and includes a sentence I can use while explaining each step. The CD pipeline proves the deployed behavior in normal, recovery, and stop-after-three-tries scenarios, then publishes a sanitized result.
+I built an AWS system that checks the weather every hour without me. If a request fails, it retries within a three-attempt limit and records what happened. The public website lets someone explore those outcomes safely, then inspect real recorded results and the code. Behind it are Lambda, EventBridge, DynamoDB, CloudWatch, CloudFormation, and an OIDC-authenticated GitHub Actions pipeline that verifies all three scenarios against the deployed system.
 
 ## Verified deployment
 
@@ -65,9 +65,9 @@ The permanent scenario is as important as the successful recovery: it proves the
 
 The CloudWatch dashboard `aws-operations-poc-operations` is the operational UI for the project. It shows Lambda health, duration, heartbeat/schedule health, recent structured execution attempts, and focused recovery outcomes. Because it is defined in CloudFormation, the UI is reproducible and deployed through the same CI/CD path as the workload.
 
-The `site/` page is the human-facing explanation layer. It uses the “Hourly Helper” story rather than requiring the visitor to understand AWS first. The page starts with the current state, then gives six numbered story steps with “What you can say” text, recent plain-language results, the three-try safety rule, and live-proof outcomes. AWS names are available only in the optional “The computer version” section. It does not expose raw logs or mutation controls.
+The `site/` experience uses progressive disclosure: a plain-language introduction, a controllable three-scenario simulation, selectable real attempt records, and engineering disclosures with source links. Presentation mode adds talking points and manual stepping. Simulation, historic deployment tests, ordinary hourly runs, and snapshot freshness are explicitly distinguished. There are no raw logs or mutation controls.
 
-The public-site workflow publishes a fresh status snapshot only after successful CD/live proof. The snapshot is derived from the existing structured log stream and deliberately excludes identifiers and operational details that are not needed by visitors.
+The public-site workflow publishes a sanitized log snapshot after successful CD/live proof, with owner-started refresh available. Proof is read from the exact deployment artifact, not inferred from a URL. The browser marks old or missing snapshots unknown rather than retaining a misleading green state.
 
 ## Skills demonstrated
 
@@ -93,6 +93,6 @@ Built an event-driven AWS workload with GitHub OIDC CI/CD, CloudFormation, Cloud
 
 **How do you prove it works?**  The CD pipeline invokes the deployed function in three modes, asserts the exact DynamoDB sequence, verifies matching CloudWatch events, and uploads a JSON evidence artifact tied to the commit SHA.
 
-**Why have both a CloudWatch dashboard and a public page?**  They serve different audiences. CloudWatch is the detailed operator interface inside AWS. The Hourly Helper page is the explanation layer for someone who should not need AWS access: it starts with an everyday story, then reveals the AWS names only if the visitor wants them. It is read-only and adds no second workload.
+**Why have both a CloudWatch dashboard and a public page?** They serve different audiences. CloudWatch is the operator interface inside AWS. The public experience explains the system interactively, lets visitors inspect sanitized evidence, and reveals technical depth as requested. Its interactions stay in the browser; it adds no second AWS workload.
 
 **How is cost controlled?**  The workload runs hourly at 128 MB, DynamoDB is on-demand, logs expire after 14 days, the dashboard reuses existing CloudWatch telemetry, the public dashboard is static, and the design avoids always-on application compute and network infrastructure.

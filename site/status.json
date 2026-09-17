@@ -1,8 +1,8 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "generated_at": null,
   "status": "unknown",
-  "status_message": "The helper's first live update will appear after the next verified deployment.",
+  "status_message": "No verified public snapshot is available yet.",
   "last_scheduled_run_at": null,
   "heartbeat": {
     "state": "unknown",
@@ -37,6 +37,7 @@
   ],
   "proof": {
     "state": "unknown",
+    "source": "unavailable",
     "verified_at": null,
     "message": "The latest verified deployment will appear here.",
     "url": "https://github.com/phatcobra/aws-operations-poc/actions"

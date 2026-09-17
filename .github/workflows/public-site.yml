@@ -12,16 +12,39 @@ on:
 
 permissions:
   contents: read
+  actions: read
   id-token: write
   pages: write
 
+concurrency:
+  group: poc-public-site
+  cancel-in-progress: false
+
 jobs:
   build:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
     environment: production
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Download exact deployment evidence
+        if: github.event_name == 'workflow_run'
+        uses: actions/download-artifact@v4
+        with:
+          name: aws-operations-poc-proof-${{ github.event.workflow_run.head_sha }}
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+          path: .proof
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Validate public experience
+        run: node --test tests/site.test.mjs
 
       - uses: actions/setup-python@v5
         with:
@@ -42,7 +65,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ -n "$PROOF_RUN_URL" ]; then
-            python3 scripts/publish_status.py --output site/status.json --run-url "$PROOF_RUN_URL"
+            python3 scripts/publish_status.py --output site/status.json --proof .proof/live-evidence.json --run-url "$PROOF_RUN_URL"
           else
             python3 scripts/publish_status.py --output site/status.json
           fi
