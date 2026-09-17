@@ -3,13 +3,16 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#08111f" />
+    <meta name="theme-color" content="#f3f6f9" />
     <meta
       name="description"
-      content="A plain-English view of an AWS system that runs automatically, detects problems, retries safely, and records what happened."
+      content="A public, read-only operations dashboard for the AWS Operations POC."
     />
-    <title>AWS Operations Lab</title>
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%2308111f'/%3E%3Cpath d='M18 39.5 29 17l6.4 12.8L46 19l-2.8 27H20.8z' fill='%2377e1c0'/%3E%3Ccircle cx='43' cy='44' r='5' fill='%2377a7ff'/%3E%3C/svg%3E" />
+    <title>AWS Operations POC · Operations dashboard</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%231c4f80'/%3E%3Cpath d='M14 45V19h8v18h8V25h8v12h8V13h8v32z' fill='%23ffffff'/%3E%3C/svg%3E"
+    />
     <link rel="stylesheet" href="./styles.css" />
     <script src="./app.js" defer></script>
   </head>
@@ -17,201 +20,254 @@
     <a class="skip-link" href="#main-content">Skip to content</a>
 
     <div class="page-shell">
-      <header class="site-header">
-        <a class="brand" href="./" aria-label="AWS Operations Lab home">
+      <header class="topbar">
+        <a class="brand" href="./" aria-label="AWS Operations POC home">
           <span class="brand-mark" aria-hidden="true">
-            <span></span><span></span><span></span>
+            <span></span><span></span><span></span><span></span>
           </span>
-          <span>AWS Operations Lab</span>
+          <span class="brand-copy">
+            <strong>AWS Operations POC</strong>
+            <small>Public operations dashboard</small>
+          </span>
         </a>
-        <div class="header-actions">
-          <span class="read-only-badge"><span class="tiny-dot"></span>Read-only view</span>
-          <button class="text-button" id="refresh-button" type="button">
-            <span class="refresh-icon" aria-hidden="true">↻</span>
+
+        <div class="toolbar">
+          <span class="read-only-badge"><span class="status-dot" aria-hidden="true"></span>Public / read-only</span>
+          <button class="toolbar-button" id="explain-toggle" type="button" aria-pressed="false" aria-controls="explain-panel">
+            <span class="button-glyph" aria-hidden="true">?</span>
+            Explain mode
+          </button>
+          <button class="toolbar-button" id="refresh-button" type="button">
+            <span class="refresh-glyph" aria-hidden="true">↻</span>
             Refresh
           </button>
         </div>
       </header>
 
       <main id="main-content">
-        <section class="hero" aria-labelledby="hero-title">
-          <div class="hero-copy">
-            <p class="eyebrow">AN AUTOMATIC SYSTEM YOU CAN WATCH</p>
-            <h1 id="hero-title">Is it working?</h1>
-            <p class="hero-lede">
-              This page shows what an AWS system is doing in everyday language:
-              it runs by itself, notices problems, tries again when it is safe,
-              and stops at a limit instead of getting stuck.
+        <section class="intro-row" aria-labelledby="page-title">
+          <div>
+            <p class="eyebrow">LIVE OPERATIONS SNAPSHOT</p>
+            <h1 id="page-title">Operations dashboard</h1>
+            <p class="intro-copy">
+              A sanitized view of the workload's health, schedule signal, recovery behavior,
+              and recent runs. Read it top to bottom: status, signals, runs, then proof.
             </p>
-
-            <div class="status-banner status-unknown" id="status-banner" aria-live="polite">
-              <div class="status-symbol" id="status-symbol" aria-hidden="true">?</div>
-              <div>
-                <p class="status-kicker">CURRENT SYSTEM STATUS</p>
-                <h2 id="status-title">Checking the latest update…</h2>
-                <p id="status-message">The page is looking for the latest read-only status snapshot.</p>
-              </div>
-            </div>
           </div>
 
-          <aside class="last-check-card panel" aria-labelledby="last-check-heading">
-            <div class="card-label" id="last-check-heading">LAST AUTOMATIC CHECK</div>
-            <div class="last-check-time" id="last-check-time">Loading…</div>
-            <div class="last-check-detail" id="last-check-detail">Waiting for the status snapshot.</div>
-            <div class="card-divider"></div>
-            <div class="data-source-row">
-              <span>Public status snapshot</span>
-              <span class="source-state" id="source-state">Checking</span>
+          <aside class="snapshot-meta" aria-label="Snapshot metadata">
+            <div class="meta-row">
+              <span>Snapshot</span>
+              <strong id="snapshot-relative">Loading…</strong>
+              <small id="snapshot-absolute">Waiting for the published snapshot.</small>
+            </div>
+            <div class="meta-row">
+              <span>Source</span>
+              <strong>Sanitized status</strong>
+              <small id="source-state">Loading from status.json</small>
             </div>
           </aside>
         </section>
 
-        <section class="overview-grid" aria-label="System overview">
-          <article class="panel activity-panel">
-            <div class="section-heading-row">
-              <div>
-                <p class="section-kicker">WHAT JUST HAPPENED</p>
-                <h2>Recent activity</h2>
-              </div>
-              <span class="live-chip" id="activity-chip">Loading</span>
-            </div>
-            <div class="activity-list" id="activity-list" aria-live="polite">
-              <div class="loading-line"></div>
-              <div class="loading-line short"></div>
-              <div class="loading-line"></div>
-            </div>
-          </article>
-
-          <article class="panel checks-panel">
-            <div class="section-heading-row">
-              <div>
-                <p class="section-kicker">THE IMPORTANT PARTS</p>
-                <h2>System checks</h2>
-              </div>
-              <span class="check-count" id="check-count">—</span>
-            </div>
-            <div class="checks-list" id="checks-list" aria-live="polite">
-              <div class="check-row loading-check"><span></span><span></span></div>
-              <div class="check-row loading-check"><span></span><span></span></div>
-              <div class="check-row loading-check"><span></span><span></span></div>
-              <div class="check-row loading-check"><span></span><span></span></div>
-            </div>
-          </article>
-        </section>
-
-        <section class="simulator-section panel" id="try-it" aria-labelledby="simulator-heading">
-          <div class="section-heading-row simulator-heading-row">
+        <section class="explain-panel panel" id="explain-panel" aria-labelledby="explain-heading" hidden>
+          <div class="explain-header">
             <div>
-              <p class="section-kicker">TRY IT SAFELY</p>
-              <h2 id="simulator-heading">What happens when something goes wrong?</h2>
-              <p class="section-intro">
-                These are local simulations. They do not call AWS, change the real system,
-                or create a failure anywhere.
-              </p>
+              <p class="section-kicker">WALKTHROUGH</p>
+              <h2 id="explain-heading">Explain the dashboard as you go</h2>
             </div>
-            <label class="mode-control">
-              <span>Explain with</span>
-              <select id="language-mode" aria-label="Choose the explanation style">
-                <option value="simple">Plain English</option>
-                <option value="technical">Technical names</option>
-              </select>
-            </label>
+            <div class="explain-controls">
+              <button class="step-control" id="previous-step" type="button" aria-label="Previous explanation step">←</button>
+              <span id="step-count">1 / 5</span>
+              <button class="step-control" id="next-step" type="button" aria-label="Next explanation step">→</button>
+            </div>
           </div>
+          <p class="explain-title" id="explain-title">1. Start with the health signal</p>
+          <p class="explain-copy" id="explain-copy">
+            This is the first question: can the public snapshot confirm that the scheduled workload is healthy?
+          </p>
+          <div class="step-nav" id="step-nav" role="tablist" aria-label="Dashboard explanation steps"></div>
+        </section>
 
-          <div class="scenario-buttons" role="tablist" aria-label="Simulation scenarios">
-            <button class="scenario-button" type="button" role="tab" aria-selected="false" data-scenario="normal">
-              <span class="scenario-icon success-icon" aria-hidden="true">✓</span>
-              <span><strong>Normal run</strong><small>Works the first time</small></span>
-            </button>
-            <button class="scenario-button" type="button" role="tab" aria-selected="false" data-scenario="transient">
-              <span class="scenario-icon retry-icon" aria-hidden="true">↻</span>
-              <span><strong>Temporary problem</strong><small>Fails once, then recovers</small></span>
-            </button>
-            <button class="scenario-button" type="button" role="tab" aria-selected="false" data-scenario="permanent">
-              <span class="scenario-icon warning-icon" aria-hidden="true">!</span>
-              <span><strong>Persistent problem</strong><small>Stops safely after 3 tries</small></span>
-            </button>
-          </div>
-
-          <div class="simulation-output" id="simulation-output" aria-live="polite">
-            <div class="simulation-empty">
-              <span class="empty-orbit" aria-hidden="true">+</span>
+        <section class="dashboard-section panel health-section" id="health-section" data-walkthrough-target="health" aria-labelledby="health-heading">
+          <div class="section-header">
+            <div class="section-title">
+              <span class="section-number" aria-hidden="true">01</span>
               <div>
-                <h3>Choose a situation above</h3>
-                <p>See exactly how the system responds when things go right or wrong.</p>
+                <p class="section-kicker">HEALTH</p>
+                <h2 id="health-heading">Overall system status</h2>
               </div>
             </div>
+            <span class="state-badge state-unknown" id="overall-badge">UNKNOWN</span>
           </div>
-        </section>
 
-        <section class="how-section" aria-labelledby="how-heading">
-          <div class="section-heading-row">
-            <div>
-              <p class="section-kicker">FOLLOW THE PATH</p>
-              <h2 id="how-heading">How it works</h2>
-              <p class="section-intro">Tap a step to see what that part means.</p>
+          <div class="health-grid">
+            <div class="health-summary">
+              <div class="health-symbol state-unknown" id="status-symbol" aria-hidden="true">?</div>
+              <div>
+                <p class="field-label">CURRENT STATE</p>
+                <h3 id="status-title">Checking the latest snapshot</h3>
+                <p class="status-message" id="status-message">The page is waiting for a sanitized status file.</p>
+              </div>
             </div>
+
+            <dl class="headline-metrics">
+              <div class="headline-metric">
+                <dt>Last scheduled run</dt>
+                <dd id="last-run-relative">Not available</dd>
+                <small id="last-run-absolute">No automatic run published yet.</small>
+              </div>
+              <div class="headline-metric">
+                <dt>Latest latency</dt>
+                <dd id="latest-latency">—</dd>
+                <small>Final attempt in the latest run</small>
+              </div>
+              <div class="headline-metric">
+                <dt>Recent runs</dt>
+                <dd id="recent-run-count">0</dd>
+                <small>Runs in this snapshot</small>
+              </div>
+            </dl>
           </div>
-          <div class="flow-grid" id="flow-grid"></div>
-          <div class="flow-detail panel" id="flow-detail" aria-live="polite"></div>
+
+          <div class="what-it-means">
+            <span class="meaning-label">What this means</span>
+            <p>The overall status combines schedule freshness with the latest scheduled outcome. Unknown is intentional when the public snapshot cannot confirm the signal.</p>
+          </div>
         </section>
 
-        <section class="details-grid" aria-label="More information">
-          <details class="technical-details panel">
-            <summary>
-              <span>
-                <span class="summary-kicker">FOR CURIOUS VISITORS</span>
-                <strong>Technical details</strong>
-              </span>
-              <span class="summary-plus" aria-hidden="true">+</span>
-            </summary>
-            <div class="details-content">
-              <p>
-                The public page is only a presentation layer. It receives a sanitized status
-                snapshot; it cannot invoke the workload, inject a fault, or change AWS.
-              </p>
-              <div class="technical-columns">
+        <section class="dashboard-section" id="signals-section" data-walkthrough-target="signals" aria-labelledby="signals-heading">
+          <div class="section-header section-header-outside">
+            <div class="section-title">
+              <span class="section-number" aria-hidden="true">02</span>
+              <div>
+                <p class="section-kicker">SIGNALS</p>
+                <h2 id="signals-heading">Heartbeat and operating checks</h2>
+              </div>
+            </div>
+            <p class="section-side-note">The signals below explain why the headline status has its current value.</p>
+          </div>
+          <div class="signal-grid" id="signal-grid" aria-live="polite">
+            <div class="signal-card skeleton-card"></div>
+            <div class="signal-card skeleton-card"></div>
+            <div class="signal-card skeleton-card"></div>
+            <div class="signal-card skeleton-card"></div>
+          </div>
+        </section>
+
+        <section class="dashboard-section panel runs-section" id="runs-section" data-walkthrough-target="runs" aria-labelledby="runs-heading">
+          <div class="section-header">
+            <div class="section-title">
+              <span class="section-number" aria-hidden="true">03</span>
+              <div>
+                <p class="section-kicker">EXECUTION HISTORY</p>
+                <h2 id="runs-heading">Recent runs</h2>
+              </div>
+            </div>
+            <p class="section-side-note">One row is one invocation, not one individual attempt.</p>
+          </div>
+
+          <div class="outcome-summary" aria-label="Recent run outcome counts">
+            <div class="outcome-count"><span class="outcome-marker success" aria-hidden="true"></span><strong id="success-count">0</strong><span>Success</span></div>
+            <div class="outcome-count"><span class="outcome-marker recovered" aria-hidden="true"></span><strong id="recovered-count">0</strong><span>Recovered</span></div>
+            <div class="outcome-count"><span class="outcome-marker exhausted" aria-hidden="true"></span><strong id="exhausted-count">0</strong><span>Exhausted</span></div>
+            <div class="outcome-count"><span class="outcome-marker problem" aria-hidden="true"></span><strong id="problem-count">0</strong><span>Problem</span></div>
+          </div>
+
+          <div class="runs-layout">
+            <div class="table-wrap">
+              <table>
+                <caption class="sr-only">Recent sanitized workload runs</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Time</th>
+                    <th scope="col">Trigger</th>
+                    <th scope="col">Outcome</th>
+                    <th scope="col">Attempts</th>
+                    <th scope="col">Latency</th>
+                  </tr>
+                </thead>
+                <tbody id="runs-body">
+                  <tr><td colspan="5" class="table-empty">Loading recent runs…</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <aside class="timeline-card" aria-labelledby="timeline-heading">
+              <div class="mini-header">
                 <div>
-                  <h3>What runs the system</h3>
-                  <ul>
-                    <li><strong>EventBridge</strong> starts the workload every hour.</li>
-                    <li><strong>Lambda</strong> runs the Python program.</li>
-                    <li><strong>DynamoDB</strong> keeps the attempt history.</li>
-                  </ul>
+                  <p class="field-label">LATEST FIRST</p>
+                  <h3 id="timeline-heading">Outcome timeline</h3>
                 </div>
+                <span class="timeline-line-key" aria-hidden="true"></span>
+              </div>
+              <ol class="timeline" id="timeline" aria-live="polite">
+                <li class="timeline-empty">Loading timeline…</li>
+              </ol>
+            </aside>
+          </div>
+
+          <div class="what-it-means">
+            <span class="meaning-label">How to read it</span>
+            <p>Attempts show the bounded recovery loop in action. Recovered means a later attempt succeeded; exhausted means the system stopped at its safety limit.</p>
+          </div>
+        </section>
+
+        <div class="lower-grid">
+          <section class="dashboard-section panel proof-section" id="proof-section" data-walkthrough-target="proof" aria-labelledby="proof-heading">
+            <div class="section-header">
+              <div class="section-title">
+                <span class="section-number" aria-hidden="true">04</span>
                 <div>
-                  <h3>How it stays observable</h3>
-                  <ul>
-                    <li><strong>CloudWatch</strong> collects logs, metrics, and the operator dashboard.</li>
-                    <li><strong>GitHub Actions</strong> tests, deploys, and proves the live behavior.</li>
-                    <li><strong>Bounded recovery</strong> allows at most three attempts.</li>
-                  </ul>
+                  <p class="section-kicker">DEPLOYMENT PROOF</p>
+                  <h2 id="proof-heading">Verified behavior</h2>
                 </div>
               </div>
-              <p class="technical-note">
-                The operator dashboard inside AWS contains the detailed logs and alarm state.
-                This public page intentionally shows only the information needed to understand the result.
-              </p>
+              <span class="state-badge state-unknown" id="proof-badge">UNKNOWN</span>
             </div>
-          </details>
 
-          <article class="proof-card panel" aria-labelledby="proof-heading">
-            <div class="proof-mark" aria-hidden="true">✓</div>
-            <div>
-              <p class="section-kicker">PROOF, NOT JUST A CLAIM</p>
-              <h2 id="proof-heading">The system tests itself</h2>
-              <p id="proof-message">The latest verified deployment will appear here.</p>
-              <a class="arrow-link" id="proof-link" href="https://github.com/phatcobra/aws-operations-poc/actions" target="_blank" rel="noreferrer">
-                View the project proof <span aria-hidden="true">↗</span>
-              </a>
+            <p class="proof-message" id="proof-message">The latest verified deployment will appear here.</p>
+            <div class="proof-scenarios" id="proof-scenarios"></div>
+            <a class="source-link" id="proof-link" href="https://github.com/phatcobra/aws-operations-poc/actions" target="_blank" rel="noreferrer">
+              Open GitHub Actions proof <span aria-hidden="true">↗</span>
+            </a>
+          </section>
+
+          <section class="dashboard-section panel boundary-section" id="boundary-section" data-walkthrough-target="boundary" aria-labelledby="boundary-heading">
+            <div class="section-header">
+              <div class="section-title">
+                <span class="section-number" aria-hidden="true">05</span>
+                <div>
+                  <p class="section-kicker">BOUNDARY</p>
+                  <h2 id="boundary-heading">What this page can tell you</h2>
+                </div>
+              </div>
             </div>
-          </article>
-        </section>
+
+            <dl class="boundary-list">
+              <div>
+                <dt>Shows</dt>
+                <dd>Sanitized health, schedule freshness, outcomes, attempts, and latency.</dd>
+              </div>
+              <div>
+                <dt>Does not show</dt>
+                <dd>Raw logs, run IDs, ARNs, credentials, or private AWS details.</dd>
+              </div>
+              <div>
+                <dt>Can do</dt>
+                <dd>Refresh this published snapshot and walk through its meaning.</dd>
+              </div>
+              <div>
+                <dt>Cannot do</dt>
+                <dd>Invoke AWS, inject a fault, or change any resource.</dd>
+              </div>
+            </dl>
+          </section>
+        </div>
       </main>
 
       <footer class="site-footer">
-        <span>A small AWS operations lab, explained for humans.</span>
-        <a href="https://github.com/phatcobra/aws-operations-poc" target="_blank" rel="noreferrer">View the project on GitHub ↗</a>
+        <span>Public read-only view · status is published from the project workflow.</span>
+        <a href="https://github.com/phatcobra/aws-operations-poc" target="_blank" rel="noreferrer">View source on GitHub ↗</a>
       </footer>
     </div>
   </body>

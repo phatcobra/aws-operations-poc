@@ -6,7 +6,7 @@
   "last_scheduled_run_at": null,
   "heartbeat": {
     "state": "unknown",
-    "message": "The public page has not received a live schedule update yet."
+      "message": "The public dashboard has not received a live schedule update yet."
   },
   "recent_runs": [],
   "checks": [
