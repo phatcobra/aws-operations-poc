@@ -3,10 +3,11 @@ Description: >
   aws-operations-poc: EventBridge-scheduled Lambda that fetches a public,
   keyless weather API with bounded retry/backoff and deterministic fault
   injection, persists structured run evidence to DynamoDB, logs structured
-  JSON to CloudWatch, and exposes a CloudWatch heartbeat/staleness alarm.
-  Lambda code is inlined from src/app.py by scripts/render_template.py
-  (single source of truth, no S3 packaging step needed for a function this
-  small). Uses the pre-provisioned Lambda runtime role; creates no IAM resources.
+  JSON to CloudWatch, and exposes a CloudWatch heartbeat/staleness alarm and
+  operator dashboard. Lambda code is inlined from src/app.py by
+  scripts/render_template.py (single source of truth, no S3 packaging step
+  needed for a function this small). Uses the pre-provisioned Lambda runtime
+  role; creates no IAM resources.
 
 Parameters:
   LambdaRuntimeRoleArn:
@@ -123,6 +124,110 @@ Resources:
       ComparisonOperator: LessThanThreshold
       TreatMissingData: breaching
 
+  OperationsDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: aws-operations-poc-operations
+      DashboardBody: !Sub |
+        {
+          "start": "-PT24H",
+          "periodOverride": "inherit",
+          "widgets": [
+            {
+              "type": "text",
+              "x": 0,
+              "y": 0,
+              "width": 24,
+              "height": 2,
+              "properties": {
+                "markdown": "# AWS Operations POC — Operator Dashboard\nManaged by CloudFormation. Source of truth: `phatcobra/aws-operations-poc`."
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 2,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "Workload health — invocations / errors / throttles",
+                "view": "timeSeries",
+                "stacked": false,
+                "region": "${AWS::Region}",
+                "period": 300,
+                "metrics": [
+                  ["AWS/Lambda", "Invocations", "FunctionName", "aws-operations-poc-worker", {"stat": "Sum", "label": "Invocations"}],
+                  [".", "Errors", ".", ".", {"stat": "Sum", "label": "Lambda Errors"}],
+                  [".", "Throttles", ".", ".", {"stat": "Sum", "label": "Throttles"}]
+                ]
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 2,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "Latency",
+                "view": "timeSeries",
+                "stacked": false,
+                "region": "${AWS::Region}",
+                "period": 300,
+                "metrics": [
+                  ["AWS/Lambda", "Duration", "FunctionName", "aws-operations-poc-worker", {"stat": "Average", "label": "Average duration (ms)"}]
+                ]
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 8,
+              "width": 24,
+              "height": 5,
+              "properties": {
+                "title": "Heartbeat / schedule health",
+                "view": "timeSeries",
+                "stacked": false,
+                "region": "${AWS::Region}",
+                "period": 3600,
+                "metrics": [
+                  ["AWS/Lambda", "Invocations", "FunctionName", "aws-operations-poc-worker", {"stat": "Sum", "label": "Hourly invocations"}]
+                ],
+                "annotations": {
+                  "alarms": ["arn:${AWS::Partition}:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:aws-operations-poc-heartbeat-stale"]
+                }
+              }
+            },
+            {
+              "type": "log",
+              "x": 0,
+              "y": 13,
+              "width": 24,
+              "height": 8,
+              "properties": {
+                "title": "Recent execution attempts",
+                "region": "${AWS::Region}",
+                "view": "table",
+                "query": "SOURCE '/aws/lambda/aws-operations-poc-worker' | fields @timestamp, run_id, trigger_type, event, status, recovery_state, attempt_number, latency_ms | filter event = 'run_success' or event = 'run_attempt_failed' | sort @timestamp desc | limit 25"
+              }
+            },
+            {
+              "type": "log",
+              "x": 0,
+              "y": 21,
+              "width": 24,
+              "height": 6,
+              "properties": {
+                "title": "Recovery outcomes",
+                "region": "${AWS::Region}",
+                "view": "table",
+                "query": "SOURCE '/aws/lambda/aws-operations-poc-worker' | fields @timestamp, run_id, trigger_type, status, recovery_state, attempt_number, latency_ms | filter recovery_state = 'recovered' or recovery_state = 'exhausted' | sort @timestamp desc | limit 20"
+              }
+            }
+          ]
+        }
+
 Outputs:
   FunctionName:
     Value: !Ref WorkerFunction
@@ -136,3 +241,5 @@ Outputs:
     Value: !Ref WorkerLogGroup
   HeartbeatAlarmName:
     Value: !Ref HeartbeatStaleAlarm
+  OperationsDashboardName:
+    Value: !Ref OperationsDashboard
