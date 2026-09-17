@@ -124,9 +124,18 @@
 
   function formatDuration(value) {
     const milliseconds = Number(value);
-    if (!Number.isFinite(milliseconds)) return "Time not available";
-    if (milliseconds >= 1000) return `${(milliseconds / 1000).toFixed(1)} seconds`;
-    return `${milliseconds >= 100 ? Math.round(milliseconds) : milliseconds.toFixed(1)} milliseconds`;
+    if (!Number.isFinite(milliseconds)) return "Timing not available";
+    if (milliseconds >= 1000) {
+      const seconds = milliseconds / 1000;
+      return `Took ${seconds >= 10 ? Math.round(seconds) : seconds.toFixed(1)} seconds`;
+    }
+    return "Took less than a second";
+  }
+
+  function formatAttempts(value) {
+    const attempts = Number(value);
+    if (!Number.isFinite(attempts) || attempts <= 0) return "number of tries not available";
+    return `${attempts} ${attempts === 1 ? "try" : "tries"}`;
   }
 
   function normalizeStatus(value) {
@@ -186,8 +195,8 @@
 
   function triggerLabel(trigger) {
     if (trigger === "automatic") return "The hourly check";
-    if (trigger === "verification") return "A project test";
-    return "A manual check";
+    if (trigger === "verification") return "A safety test";
+    return "Someone started a check";
   }
 
   function applyStateClass(element, prefix, state) {
@@ -313,7 +322,7 @@
       copy.append(title, description);
       const outcome = document.createElement("b");
       outcome.className = result.className;
-      outcome.textContent = `${result.label} · ${scenarios[key].attempts || "—"}`;
+      outcome.textContent = `${result.label} · ${formatAttempts(scenarios[key].attempts)}`;
       item.append(icon, copy, outcome);
       dom.proofList.appendChild(item);
     });
