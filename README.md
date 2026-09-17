@@ -15,6 +15,7 @@ GitHub change
 → scheduled Lambda workload
 → public API call
 → CloudWatch logs + metrics + heartbeat alarm
+→ CloudWatch operator dashboard
 → DynamoDB execution evidence
 → controlled failure
 → automatic bounded recovery
@@ -34,6 +35,8 @@ flowchart LR
     L --> DDB[(DynamoDB: aws-operations-poc-runs)]
     L --> CW[CloudWatch Logs + Lambda metrics]
     CW --> H[Heartbeat staleness alarm]
+    CW --> UI[CloudWatch operator dashboard]
+    H --> UI
     CD[CD live-proof step] --> L
     DDB --> CD
     CW --> CD
@@ -52,10 +55,29 @@ The stack is `aws-operations-poc-main` in `us-east-2`.
 | CloudWatch Logs | `/aws/lambda/aws-operations-poc-worker` | Structured JSON operational logs |
 | CloudWatch Metrics | Native Lambda metrics | Invocation/duration/platform health signals |
 | CloudWatch Alarm | `aws-operations-poc-heartbeat-stale` | Detects two consecutive missing hourly invocations |
+| CloudWatch Dashboard | `aws-operations-poc-operations` | Operator UI for health, latency, recent attempts, and recovery outcomes |
 | CloudFormation | `aws-operations-poc-main` | Infrastructure as code and deployment boundary |
 | GitHub Actions | CI + CD | Tests, validation, OIDC deployment, live proof |
 
 All application resources use the `aws-operations-poc-` namespace.
+
+## Operator dashboard
+
+The project includes a native CloudWatch user interface named:
+
+```text
+aws-operations-poc-operations
+```
+
+It is managed by CloudFormation and is intended to be the operator-facing view of the POC rather than a separate frontend application. The dashboard shows:
+
+- Lambda invocations, errors, and throttles;
+- average Lambda duration;
+- hourly invocation volume with the heartbeat alarm overlaid;
+- a table of recent structured execution attempts;
+- a focused table of `recovered` and `exhausted` outcomes.
+
+The recent-run tables are driven from the same structured CloudWatch events emitted by the workload and validated by the CD live-proof step. Durable attempt history remains in DynamoDB.
 
 ## Reliability behavior
 
@@ -127,12 +149,13 @@ sub = repo:phatcobra@69565195/aws-operations-poc@1372530555:environment:producti
 ref = refs/heads/main
 ```
 
-AWS must trust that exact subject before CD can assume the role. See [`docs/AWS_BOUNDARY.md`](docs/AWS_BOUNDARY.md) for the exact project-scoped bootstrap policy and current verification state.
+AWS trusts that exact subject. See [`docs/AWS_BOUNDARY.md`](docs/AWS_BOUNDARY.md) for the exact project-scoped bootstrap policy.
 
 ## Observability
 
-Operational state is visible through four independent signals:
+Operational state is visible through five complementary signals:
 
+- `aws-operations-poc-operations`, the CloudWatch operator dashboard;
 - structured CloudWatch Logs for run-level events and failure context;
 - native Lambda CloudWatch metrics for invocation, duration, throttling, and platform-level errors;
 - `aws-operations-poc-heartbeat-stale` for schedule staleness detection;
@@ -146,8 +169,9 @@ The deliberate application-level failures are handled inside the bounded recover
 - Lambda uses a pre-provisioned runtime role.
 - CloudFormation uses a pre-provisioned service role.
 - GitHub uses short-lived OIDC credentials, not long-lived AWS keys.
-- The GitHub deployment role is intended to be scoped to this project's stack and exact live-proof resources.
-- The `production` GitHub environment is intended to be restricted to `main`.
+- The GitHub deployment role is scoped to this project's stack and exact live-proof resources.
+- The CloudFormation role receives exact authority for this project's heartbeat alarm and dashboard.
+- The `production` GitHub environment is restricted to `main`.
 - The public weather API requires no secret or API key.
 
 ## Cost controls
@@ -156,6 +180,7 @@ The deliberate application-level failures are handled inside the bounded recover
 - DynamoDB: `PAY_PER_REQUEST`.
 - CloudWatch Logs: 14-day retention.
 - Heartbeat uses the native Lambda invocation metric, so it does not create a custom metric.
+- Dashboard widgets reuse native metrics and existing logs; no always-on UI compute is introduced.
 - No NAT gateway, VPC, S3 deployment bucket, or always-on application compute.
 
 ## Run locally
