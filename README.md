@@ -1,8 +1,32 @@
 # Autonomous AWS Operations Lab
 
+[![CI](https://github.com/phatcobra/aws-operations-poc/actions/workflows/ci.yml/badge.svg)](https://github.com/phatcobra/aws-operations-poc/actions/workflows/ci.yml)
+[![CD](https://github.com/phatcobra/aws-operations-poc/actions/workflows/cd.yml/badge.svg)](https://github.com/phatcobra/aws-operations-poc/actions/workflows/cd.yml)
+
 `aws-operations-poc` is a compact AWS operations project designed to prove that a small workload can be built, tested, deployed, observed, deliberately failed, automatically recovered, and audited end to end.
 
 The neutral workload is weather data. The engineering demonstration is the point.
+
+## Verified production deployment
+
+The POC is deployed and verified in `us-east-2`.
+
+- CloudFormation stack: `aws-operations-poc-main`
+- Operator UI: CloudWatch dashboard `aws-operations-poc-operations`
+- Verified commit: [`35f0c052`](https://github.com/phatcobra/aws-operations-poc/commit/35f0c05287e71d28e95416c415d7d29e4fc7aede)
+- Successful CD/live-proof run: [GitHub Actions run 35247841207](https://github.com/phatcobra/aws-operations-poc/actions/runs/35247841207)
+- Live verifier result: `pass`
+- Deployment identity: `aws-operations-poc-github-deploy-role/GitHubActions`
+
+The live proof executed all three operational scenarios against AWS:
+
+| Scenario | Verified result |
+|---|---|
+| normal | success on attempt 1; `not_needed` |
+| transient | failure on attempt 1, success on attempt 2; `recovered` |
+| permanent | exactly 3 failed attempts; `exhausted` |
+
+The proof artifact for that run contains the non-secret OIDC claims plus `live-evidence.json`, including the exact DynamoDB attempt sequence and matching CloudWatch log-event counts.
 
 ## End-to-end path
 
@@ -63,21 +87,17 @@ All application resources use the `aws-operations-poc-` namespace.
 
 ## Operator dashboard
 
-The project includes a native CloudWatch user interface named:
+The native CloudWatch dashboard `aws-operations-poc-operations` is the operator-facing UI for the POC. It is created and updated by CloudFormation rather than maintained manually.
 
-```text
-aws-operations-poc-operations
-```
-
-It is managed by CloudFormation and is intended to be the operator-facing view of the POC rather than a separate frontend application. The dashboard shows:
+It shows:
 
 - Lambda invocations, errors, and throttles;
 - average Lambda duration;
-- hourly invocation volume with the heartbeat alarm overlaid;
-- a table of recent structured execution attempts;
-- a focused table of `recovered` and `exhausted` outcomes.
+- heartbeat/schedule health through the `aws-operations-poc-heartbeat-stale` alarm;
+- recent structured execution attempts;
+- focused `recovered` and `exhausted` outcomes.
 
-The recent-run tables are driven from the same structured CloudWatch events emitted by the workload and validated by the CD live-proof step. Durable attempt history remains in DynamoDB.
+The recent-run tables use the same structured CloudWatch events validated by the CD live-proof step. Durable attempt history remains in DynamoDB.
 
 ## Reliability behavior
 
@@ -126,7 +146,7 @@ Every attempt is written to DynamoDB and emitted as structured JSON:
 
 The CD workflow also captures only non-secret GitHub OIDC claims into `oidc-claims.json`, making trust-policy failures diagnosable without exposing the token.
 
-A successful CD run therefore proves the deployed behavior rather than merely proving that files exist.
+A successful CD run therefore proves deployed behavior rather than merely proving that files exist.
 
 ## CI/CD
 
@@ -140,7 +160,7 @@ arn:aws:iam::660838763909:role/aws-operations-poc-github-deploy-role
 
 No AWS access keys are stored in GitHub. The role ARN is configuration, not a credential.
 
-The actual OIDC token claims emitted by GitHub for this deployment job include:
+The observed OIDC claims for the successful deployment include:
 
 ```text
 iss = https://token.actions.githubusercontent.com
@@ -149,7 +169,7 @@ sub = repo:phatcobra@69565195/aws-operations-poc@1372530555:environment:producti
 ref = refs/heads/main
 ```
 
-AWS trusts that exact subject. See [`docs/AWS_BOUNDARY.md`](docs/AWS_BOUNDARY.md) for the exact project-scoped bootstrap policy.
+AWS trusts that exact subject. See [`docs/AWS_BOUNDARY.md`](docs/AWS_BOUNDARY.md) for the project-scoped trust and IAM boundary.
 
 ## Observability
 
@@ -170,7 +190,7 @@ The deliberate application-level failures are handled inside the bounded recover
 - CloudFormation uses a pre-provisioned service role.
 - GitHub uses short-lived OIDC credentials, not long-lived AWS keys.
 - The GitHub deployment role is scoped to this project's stack and exact live-proof resources.
-- The CloudFormation role receives exact authority for this project's heartbeat alarm and dashboard.
+- The CloudFormation role has project-scoped authority for the heartbeat alarm and operator dashboard.
 - The `production` GitHub environment is restricted to `main`.
 - The public weather API requires no secret or API key.
 
